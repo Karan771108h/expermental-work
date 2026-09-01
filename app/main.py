@@ -248,6 +248,7 @@ def case_detail(request: Request, cid: str):
     thread_html = (f'<div class="thread">{trows}</div>' if trows else
                    '<p class="muted">No dated milestones yet — be the first to build this case\'s thread below. (See the Ayodhya case <a href="/case/C10">C10</a> for a worked example.)</p>')
     ent_datalist = "".join(f'<option value="{e["id"]}">' for e in db.q("SELECT id FROM entities"))
+    vote_slider = R.master_slider("master", 0, 300, 150, conv="score")
     body = f"""<div class="card">
       <h1>{R.esc(c['title'])}</h1>
       <p class="muted">{R.esc(c['period'])} · domain <span class="tag">{R.esc(c['domain'])}</span> · weight
@@ -281,7 +282,8 @@ def case_detail(request: Request, cid: str):
         <input id="p" name="param" list="params" required>
         <datalist id="params">{''.join(f'<option value="{R.esc(p["param"])}">' for p in params)}</datalist>
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
-          <div><label>Your score (−5 … +5)</label><input name="score" type="number" min="-5" max="5" step="0.5" required></div>
+          <div style="grid-column:1/-1"><label>Slide this conduct on the ledger</label>
+            {vote_slider}</div>
           <div><label>📅 Event date of the conduct you're scoring</label><input name="when" type="text" placeholder="YYYY-MM-DD" pattern="\\d{{4}}(-\\d{{2}}){{0,2}}" required></div>
         </div>
         <label>Evidence URL (court/CAG/RBI/ECI links grade highest)</label><input name="evidence_url" type="url" required placeholder="https://…">
@@ -308,12 +310,14 @@ def case_detail(request: Request, cid: str):
         </div>
         <br><br><button class="btn warn">Open challenge</button><span id="cmsg" class="muted"></span>
       </form>"""
-    js = R.JS_UTILS + """
+    js = R.JS_UTILS + R.MS_JS + """
       const ef=document.getElementById('eventform');
       ef.onsubmit=async()=>{const r=await postJSON('/api/event/add',formVals(ef));
         ef.querySelector('#emsg').textContent=r.ok?' ✔ milestone added to the thread':(' ✖ '+(r.body.detail||'error')); if(r.ok)setTimeout(()=>location.reload(),900);};
       const f0=document.getElementById('voteform'), f1=document.getElementById('paramform'), f2=document.getElementById('chform');
-      if(f0) f0.onsubmit=async()=>{const r=await postJSON('/api/vote',formVals(f0));
+      if(f0) f0.onsubmit=async()=>{const d=formVals(f0); const sl=f0.querySelector('input.mast');
+        if(sl){d.score=sl.dataset.score||0;}
+        const r=await postJSON('/api/vote',d);
         f0.querySelector('#msg').textContent=r.ok?' ✔ vote sealed — thank you':(' ✖ '+(r.body.detail||'error')); if(r.ok)setTimeout(()=>location.reload(),900);};
       if(f1) f1.onsubmit=async()=>{const r=await postJSON('/api/param/add',formVals(f1));
         f1.querySelector('#pmsg').textContent=r.ok?(' ✔ added — fundamental-scale '+r.body.raw_points+' pts, normalised '+r.body.normalised):(' ✖ '+(r.body.detail||'error')); if(r.ok)setTimeout(()=>location.reload(),1100);};
@@ -451,7 +455,7 @@ def auth(request: Request):
       <label>Password</label><input name="password" type="password" required>
       <br><br><button class="btn">Login</button><span id="msg2" class="muted"></span></form></div>
     </div>"""
-    js = R.JS_UTILS + """
+    js = R.JS_UTILS + R.MS_JS + """
     document.getElementById('su').onsubmit=async(e)=>{const r=await postJSON('/api/auth/signup',formVals(e.target));
       document.getElementById('msg1').textContent = r.ok?' ✔ welcome — redirecting':(' ✖ '+(r.body.detail||'')); if(r.ok)setTimeout(()=>location.href='/',900);};
     document.getElementById('li').onsubmit=async(e)=>{const r=await postJSON('/api/auth/login',formVals(e.target));
@@ -592,14 +596,25 @@ def fundamentals(request: Request):
         place_max = 3 if f["polarity"] == "modifier" else 100
         ptag = (f'<a class="tag" href="#{f["parent"]}">part of {R.esc(parents[f["parent"]]["name"])}</a>'
                 if f["parent"] and f["parent"] in parents else "")
+        if f["polarity"] == "modifier":
+            place_ui = (f'<form class="inline placeform" data-slug="{R.esc(f["slug"])}" data-kind="mod">'
+                        f'<input name="position" type="number" min="0.2" max="3" step="0.05" style="width:86px" '
+                        f'value="{f["position"]:g}" required> multiplier '
+                        f'<input name="when" type="text" placeholder="YYYY-MM-DD" style="width:120px" required>'
+                        f'<button class="btn ghost">place</button><span class="fm muted"></span></form>')
+        else:
+            lo, hi = db.master_bounds(f)
+            slid = R.master_slider("position", lo, hi, db.master_of(f), conv=f["polarity"],
+                                   cloud=[db.master_of({**dict(f), "position": p}) if isinstance(p, str) else (100.0 - p if f["polarity"] == "harm" else 200.0 + p) for p in db.fund_placement_cloud(f["slug"])])
+            place_ui = (f'<form class="placeform" data-slug="{R.esc(f["slug"])}" data-kind="master">'
+                        f'{slid}<div class="filters"><input name="when" type="text" placeholder="YYYY-MM-DD" '
+                        f'style="width:130px" required><button class="btn ghost">place</button></div>'
+                        f'<span class="fm muted"></span></form>')
         return f"""<tr id="{f['slug']}" class="{'subrow' if indent else ''}">
           <td>{('&nbsp;&nbsp;└ ' if indent else '')}<b>{R.esc(f['name'])}</b><br><span class="muted">{R.esc(f['definition'])}</span> {ptag}</td>
           <td class="num"><b>{f['position']:g}</b>{('×' if f['polarity']=='modifier' else '')}<br><span class="muted">range {f['range_lo']:g}–{f['range_hi']:g}</span></td>
           <td>{R.badge(f['status'])}<br>{crowd}</td>
-          <td><form class="inline placeform" data-slug="{R.esc(f['slug'])}">
-            <input name="position" type="number" min="0" max="{place_max}" step="0.05" placeholder="{place_max} max" style="width:86px" required>
-            <input name="when" type="text" placeholder="YYYY-MM-DD" style="width:120px" required>
-            <button class="btn ghost">place</button><span class="fm muted"></span></form></td>
+          <td>{place_ui}</td>
         </tr>"""
 
     def band(pol):
@@ -654,7 +669,7 @@ def fundamentals(request: Request):
       <div><label>Date</label><input name="when" type="text" placeholder="YYYY-MM-DD" required></div>
       <div><label>&nbsp;</label><button class="btn">Propose</button><span class="pm muted"></span></div>
     </form></div>"""
-    js = R.JS_UTILS + """
+    js = R.JS_UTILS + R.MS_JS + """
     var CAT=%CAT%;
     function calc(){
       var s=0, msgs=[];
@@ -672,8 +687,11 @@ def fundamentals(request: Request):
     }
     document.querySelectorAll('form.placeform').forEach(f=>{f.addEventListener('submit',async e=>{e.preventDefault();
       const d=formVals(f); d.slug=f.dataset.slug;
+      const slid=f.querySelector('input.mast');
+      if(slid){const m=parseFloat(slid.value), c=slid.getAttribute('data-convert');
+        d.position=(c==='harm')?(100-m):(m-200);}
       const r=await postJSON('/api/fundamental/place',d);
-      f.querySelector('.fm').textContent = r.ok?' ✔ placed':(' ✖ '+(r.body.detail||'error'));
+      f.querySelector('.fm').textContent = r.ok?' ✔ placed — your dot is on the slider now':(' ✖ '+(r.body.detail||'error'));
       if(r.ok) setTimeout(()=>location.reload(),900);});});
     const pf=document.getElementById('propform'); if(pf) pf.onsubmit=async e=>{e.preventDefault();
       const r=await postJSON('/api/fundamental/propose',formVals(pf));
@@ -692,9 +710,13 @@ def api_fund_place(request: Request, fp: FundPlaceIn):
     fr = db.q("SELECT polarity FROM fundamentals WHERE slug=?", (fp.slug,), one=True)
     if not fr:
         return JSONResponse({"detail": "unknown fundamental"}, 400)
-    hi = 3.0 if fr["polarity"] == "modifier" else 100.0
-    if not (0 <= fp.position <= hi):
-        return JSONResponse({"detail": f"value must be 0–{hi:g} for this kind"}, 400)
+    if fr["polarity"] == "modifier":
+        if not (0.2 <= fp.position <= 3.0):
+            return JSONResponse({"detail": "multiplier must be 0.2–3.0"}, 400)
+    else:
+        full = db.q("SELECT range_lo, range_hi FROM fundamentals WHERE slug=?", (fp.slug,), one=True)
+        if not (full["range_lo"] <= fp.position <= full["range_hi"]):
+            return JSONResponse({"detail": f"this fundamental lives in {full['range_lo']:g}–{full['range_hi']:g} — the slider is bounded there by community guardrails"}, 400)
     if not valid_when(fp.when): return JSONResponse({"detail": "date required (YYYY-MM-DD)"}, 400)
     con = __import__("sqlite3").connect(db.DB)
     con.execute('INSERT INTO fund_votes(slug,user_id,position,"when",created) VALUES(?,?,?,?,?) '

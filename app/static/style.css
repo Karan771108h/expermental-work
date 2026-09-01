@@ -88,3 +88,14 @@ thead th{position:sticky;top:58px;z-index:2}
 tr.subrow td{background:#fbfdff}
 tr.subrow td:first-child{border-left:3px solid #c7d2fe}
 .badge.bad-sub{}
+
+/* ---- P4: master 0-300 slider ---- */
+.mslide{margin:.3rem 0 .5rem}.mwrap{position:relative;padding-bottom:34px}
+input.mast{-webkit-appearance:none;appearance:none;width:100%;height:22px;border-radius:12px;outline:none;border:1px solid #cbd5e1;margin:6px 0 0}
+input.mast::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:#1e3a8a;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);cursor:grab}
+input.mast::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:#1e3a8a;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);cursor:grab}
+.mout{font-variant-numeric:tabular-nums;color:var(--navy);font-weight:600;font-size:.88rem}
+.ticks{position:relative;height:14px}.cloud{position:relative;height:10px;margin-top:-14px}
+.mtick{position:absolute;transform:translateX(-50%);color:#64748b;font-size:10px;line-height:1}
+.mlab{position:absolute;transform:translateX(-50%);top:11px;color:#94a3b8;font-size:8.5px;white-space:nowrap}
+.mdot{position:absolute;transform:translateX(-50%);width:7px;height:7px;border-radius:50%;background:#f59e0b;opacity:.8;bottom:0}

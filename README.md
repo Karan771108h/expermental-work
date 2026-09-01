@@ -50,3 +50,10 @@ Regenerate tables/totals after editing scores.csv: see the python one-liner used
 
 ## App direction (v2, Sept 2026)
 The app is designed as a **people-run** system, not an AI oracle: users mint entity IDs, propose case-specific parameters, score with mandatory evidence links, set personal source-trust profiles (e.g. "court orders only"), and everything — even old scored items — stays challengeable forever. Consensus = quorum + supermajority under a leaning-balanced jury; consensus items go "stable", never "final". See `APP_SPEC.md` (v2) for the full loop, anti-brigading, promise register, and yearly-report-card generator.
+
+### P4 layer — the master 0–300 ledger (anchored sliders everywhere)
+
+- **No bare numeric voting.** Placements and votes happen on one continuous **0–300 scale** painted *worse (red, 0–100) → neutral (grey) → better (green, 200–300)*, with **universal anchors** ticked on the rail (murder 5, traffic violation 93, founding an institution 285…). Slide relative to anchors — that's where the relative relation comes from.
+- **Bounded sliders**: each fundamental can only be placed inside its community band (anti-national's slider only roams its 70–100 harm band; server rejects out-of-band posts).
+- **Median-lock consensus** (robust to an extreme placement) and a visible **placement cloud** — every slider shows orange dots of where other members put it. Case-vote sliders map 0–300 → the −5..+5 pool (`(v−150)/30`).
+- Method notes: anchored magnitude estimation + bounded ranges; medians over means; the placement distribution displayed instead of fake precision.

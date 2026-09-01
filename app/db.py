@@ -459,3 +459,63 @@ def compose_with_modifiers(funds, modifiers):
     for m in modifiers:
         mult *= (m["position"] or 1.0)
     return round(base * mult, 1)
+
+# ---------------------------------------------------------------------------
+# P4: MASTER 0-300 LEDGER (anchored slider scale)
+# One continuous scale: 0-100 harm (more bad -> closer 0), 100-200 neutral,
+# 200-300 virtue (less good -> more good). Stored authoritative value remains
+# the polarity-domain 0-100 position (compose math unchanged); master is the
+# presentation + input layer. Consensus locks to the MEDIAN of placements.
+# ---------------------------------------------------------------------------
+
+def master_of(f):
+    """Return the authoritative value on the master 0-300 ledger."""
+    if f["polarity"] == "modifier":
+        return 150.0
+    return 100.0 - f["position"] if f["polarity"] == "harm" else 200.0 + f["position"]
+
+def pos_from_master(f, m):
+    """Inverse of master_of: master slider value -> polarity-domain position."""
+    return round(100.0 - m, 1) if f["polarity"] == "harm" else round(m - 200.0, 1)
+
+def master_bounds(f):
+    """Allowed slider window on the master scale for a fundamental."""
+    if f["polarity"] == "modifier": return (0.2, 3.0)
+    if f["polarity"] == "harm":   return (100.0 - f["range_hi"], 100.0 - f["range_lo"])
+    return (200.0 + f["range_lo"], 200.0 + f["range_hi"])
+
+def band_word(m):
+    if m < 50:  return "very bad"
+    if m < 100: return "bad"
+    if m < 140: return "neutral-bad"
+    if m <= 160: return "neutral"
+    if m <= 200: return "neutral-good"
+    if m <= 250: return "good"
+    return "very good"
+
+# Reference anchors everyone understands (presentation layer, master coords)
+MASTER_ANCHORS = [
+    ("mass killing / communal massacre", 3),    ("an act against the nation", 14),
+    ("murder", 5),                              ("institutional scam", 50),
+    ("casteist/communal hate speech", 74),      ("traffic violation", 93),
+    ("littering", 97),                          ("jury duty, done well", 215),
+    ("temple/school donated by a stranger", 228), ("founding an institution (IIT-class)", 285),
+]
+
+def fund_consensus_refresh(slug):
+    """Median-lock consensus: median of placements when n>=5, plus it must sit
+    within the fundamental's declared band; the placement cloud stays visible."""
+    vals = [r["p"] for r in q('SELECT position p FROM fund_votes WHERE slug=?', (slug,))]
+    if len(vals) < 5: return
+    f = q("SELECT * FROM fundamentals WHERE slug=?", (slug,), one=True)
+    med = statistics.median(vals)
+    if f["polarity"] != "modifier":
+        med = max(min(med, f["range_hi"]), f["range_lo"])
+    con = sqlite3.connect(DB)
+    con.execute("UPDATE fundamentals SET position=?, status='CONSENSUS' WHERE slug=?",
+                (round(med, 1), slug))
+    con.commit(); con.close()
+
+def fund_placement_cloud(slug):
+    """All placement values (for the distribution dots)."""
+    return [r["p"] for r in q('SELECT position p FROM fund_votes WHERE slug=?', (slug,))]
