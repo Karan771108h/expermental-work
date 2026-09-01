@@ -1,66 +1,112 @@
-# APP SPEC — "RajScore": an auto-updating accountability ledger for Indian political actors
-*(Companion to REPORT.md. This file is the engineering blueprint; the research artefacts (`data/*.csv`) are its seed corpus.)*
+# RajScore v2 — Platform Specification (Crowd Edition)
+### "Wikipedia + scoreboard" for Indian political accountability: run by people, rules editable, everything challengeable, credibility personal-tunable.
 
-## 1. What it does
-Watches Indian politics continuously (news, Parliament, courts, PIB, ECI, commissions), auto-creates an ID for **every noun** it encounters — party, person, scheme, act, verdict, agency, panel — clusters events into **cases**, invents case-specific **parameters**, proposes **relative scores**, and publishes an always-current ledger: exactly the manual method used in REPORT.md, automated.
+> **Update log:** v1 (AI-scoring engine) → **v2 (this file): the people do the judging.** AI only fetches, dedupes, translates and formats. The earlier research (`REPORT.md`, `data/*.csv`) becomes the **seed database** — every row in it is a user-editable, challengeable object on day one.
 
-## 2. Core concepts
+---
 
-### 2.1 Entities (auto IDs for any noun)
+## 1. Why this shape
+
+The v1 design assumed an engine that scores reality. Two problems with that in India:
+
+1. **No panel can encode "credible" for everyone.** One citizen trusts only Supreme Court orders; another trusts field reporting; a third trusts first-person video. A single house score pretending to be "the truth" would be dismissed as biased — correctly.
+2. **Coverage.** A research session — even a 108-case one — misses state-level and older cases (the user noted this: "you missed many things"; true — this research skipped e.g. state CMs' records, district-level incidents, most manifesto promise-tracking, 1977–96 Congress opposition conduct, nitrogen? coverage of regional parties like TMC/DMK/AAP/SP/TDP, and thousands of smaller cases). Only crowdsourcing scales.
+
+So the platform's job is not to *decide* — it is to be the **operating system for judging**: it provides the grammar (IDs, cases, parameters, points, evidence), the process (challenge → vote → consensus → re-open), and views (scores, report cards, fact-checks) computed from whatever rules *you* chose.
+
+## 2. The core grammar (what the app provides)
+
+Six object types. Everything else is a view.
+
+| Object | What users do with it |
+|---|---|
+| **Entity (auto ID)** | Create an ID for any noun: `party:BJP`, `person:kejriwal`, `scheme:upi`, `act:waqf-2025`, `verdict:electoral-bonds-2024`, `agency:eci`, `event:pahalgam-2025`, `promise:2cr-jobs-2018`. Aliases ("राहुल गांधी", "RG") get resolved to one ID. |
+| **Case** | Any incident/policy/statement attached to 1+ entities: "demonetisation", "Chandigarh mayor ballots". Contains: period, actors, domain tags, sources. |
+| **Parameter** | A scoring dimension *anyone may propose for a case* — e.g. `process fairness`, `stated-aim delivery`. No fixed global list; per-case as required. |
+| **Score proposal** | A user's −5..+5 vote on a parameter **with mandatory evidence links**. A vote without a link is a comment, not a score. |
+| **Evidence / Source** | A link/document with a **type** (court order / commission / CAG / official data / wire / newspaper / video / social post / affidavit) and a **grade given by the community of *your* trust-set**. |
+| **Rule (rubric preset)** | A named scoring constitution: weights, allowed source types, parameter guidance. Two presets ship built-in — the "Ideal-Party Charter" (this project's rubric) and a "Development-only" preset — but **users make their own** and publish them. |
+
+## 3. The credibility dial (the feature that makes it un-killable)
+
+Each user sets their **Trust Profile**:
+- ✅ Court orders & commission reports — always count
+- ✅ CAG/RBI/ECI/WHO/World Bank datasets
+- ❓ Mainstream media — count only if 2+ independent outlets
+- ❌ Anonymous sources, party press releases (the accused grading itself), unsourced videos
+- Source-level overrides: trust The Hindu courts desk, distrust channel X, etc.
+- Verifier seats: optionally appoint "trusted graders" (retired judge, journalist YouTuber cluster…)
+
+**Consequence:** the same case renders differently per trust profile — and the UI *shows the difference explicitly*: "Under Courts-only: BJP −13 on electoral bonds. Under All-media: −12.4. 2.1% of voters used Courts-only." Nothing pretends to be objective; everything shows its recipe.
+
+## 4. Nothing is permanent — the challenge loop
+
+Every object (entity merge, case datum, source grade, parameter, score, verdict) has a status machine:
+
 ```
-entity_id:  {type}:{slug}          # e.g. person:rahul-gandhi, verdict:electoral-bonds-2024, scheme:upi
-types:      party | person | scheme | act | verdict | agency | crisis | election | event
-fields:     aliases[], first_seen, parent (event→case), current status (OPEN/CLOSED), wikidata_id (for resolution)
+PROPOSED → UNDER REVIEW → CONSENSUS (quorum + supermajority, e.g. 200 votes & 2:1) → STABLE (30d unchallenged)
+     ↑__________ CHALLENGE (needs: 1 new evidence link OR 3 co-signers) __________↓
 ```
-A resolver maps "RG", "राहुल गांधी", ex-Congress president → same ID. New nouns are auto-minted on first sighting; a merge-review queue handles duplicates.
 
-### 2.2 Cases
-An event cluster bound in time/geography with a primary actor set. Each case gets:
-- `parameters[]` — 2–4, **proposed by the rubric engine, not from a fixed list** (your instruction). Proposal logic: map case type-class (war / welfare scheme / graft case / opposition stance / institutional act / crisis response) → candidate parameter sets → LLM rewrites to case-specific wording → human/auto accept.
-- `param_scores[]` ∈ −5..+5, each with **evidence_links[]** and a **source_grade** (A/B/C per REPORT §1.4).
-- `weight` ∈ {1,2,3}.
-- `case_score = mean(param_scores) × weight`.
+- A **challenge re-opens even "stable" items** — with new evidence mandatory (prevents endless reopening-by-spam).
+- Disputes go to a **randomly-sampled, leaning-balanced jury** (see §6) that votes on evidence quality only ("Did the SC really say this?" checkable), not on politics.
+- Full git-style history: no deletion, only supersession; every score carries its provenance trail ("voted 61–34 on 2026-09-14, jury #511, evidence links archived").
 
-### 2.3 The evidence ledger (non-negotiable)
-Nothing publishes without a link per parameter. Every link is archived (snapshot), graded, and cross-checked: **A-grade alone can publish; B needs two independent outlets; C stays OPEN and renders both readings.** Viral partisan claims are routed to a **claim-check** workflow with verdicts (TRUE/MOSTLY/HALF/MOSTLY/FALSE/UNVERIFIABLE) — see the UPI row in REPORT §5 for the template.
+## 5. How a score exists (three layers, always separated)
 
-### 2.4 Relative scoring + safe rescaling (your "doubling" rule)
-- Scores are ordinal-robust: any positive affine transform `x' = a·x + b (a>0)` preserves all rankings. The engine enforces this on every recalibration.
-- When a new case "belongs between" two existing ones, the system triggers a **rescale proposal**: re-space the domain vector, run a **Kendall-τ check** (must equal 1.0 vs. pre-rescale order within the same domain), auto-commit if pass, else human review.
-- Nightly job: cross-domain consistency audit (a +3 in Security should be defensible against a +3 in Economy; drift flagged).
+1. **Raw votes** — the crowd's per-parameter submissions with evidence.
+2. **Credibility-filtered view** — votes whose evidence passes *your* trust profile, weighted by voter reputation, collapsed by anti-brigading (§6).
+3. **Final number you see** = your chosen rubric preset applied to your credibility-filtered view. Formula (default): case score = mean(param medians) × weight. Every preset is a two-line diff of this formula; users can fork presets like code.
 
-### 2.5 Opposition mirror-test
-For every "actor X opposed policy Y" record, the engine auto-queries: did X later adopt/extend Y in office? If yes → flip-flop row (extra scoring weight on the `consistency` axis). Seeded exemplars: Aadhaar, GST, MGNREGA, insurance FDI, nuclear deal.
+## 6. Anti-manipulation (where all such platforms die; non-negotiable)
 
-## 3. Data model (matches the shipped CSVs)
-```sql
-entities(entity_id, type, name, aliases, wikidata_id, status)
-cases(case_id, title, domain, period, weight, opened_at, status)
-case_actors(case_id, entity_id, role)          -- role: ruling|opposition|person
-param_scores(case_id, actor_id, param, score, justification, evidence_json, grade, updated_at)
-timeline(event_id, date, actor_id, case_id, summary, source_url)
-claim_checks(claim_id, text, verdict, actor_id, evidence_json)
-rescale_log(run_id, domain, kendall_tau, diff_json)
-```
-`scores.csv` ↔ `param_scores` rows; `timeline.csv` ↔ `timeline` rows. The seeds load verbatim.
+- **One-person-one-account:** phone-OTP + device attestation; optional Aadhaar/DigiLocker "verified citizen" badge (proof-of-personhood, identity never published).
+- **Declared leaning, publicly:** every voter wears a self-declared badge (BJP-lean/Congress-lean/None/Other). Leanings are *inputs*, not secrets: aggregation shows per-lean lines; a case where BJP-leans and Cong-leans diverge wildly is flagged **POLARISED** and its score shows a band, not a point.
+- **Quadratic-style dampening:** 1 person = 1 vote on whether something counts; reputation only widens your allowed score *deviation range*, never multiplies your ballot.
+- **Brigade detection:** burst/coordination analytics (same-link posting waves, synchronized registrations, same-template text) freeze a case into jury mode automatically.
+- **Random juries with mandatory diversity:** sampled across declared leanings, geography, account age; rotation and recusal on topics they scored before.
+- **Bot/AI-text monitoring** on submissions; all votes public as data (anonymised IDs).
 
-## 4. Pipeline (weekly cron + on-demand)
-1. **Ingest:** PIB, PRS Legislative, Lok/Rajya Sabha records, SCI/High-Court feeds, CAG, ECI, RBI, WHO/WB datasets + wires (PTI/ANI) + outlets of record (Hindu/IE/TOI/HT/BS/Reuters/AP).
-2. **Extract:** events + quotes → entity resolution → cluster into cases (time/geo/actor windows).
-3. **Parameter proposal:** rubric engine → candidate params, domain, weight.
-4. **Scoring draft:** LLM proposes −5..+5 per param, bound to evidence links (A/B graded; auto-C if single-sourced).
-5. **Rescale check** (§2.4) → publish to review queue.
-6. **Human gate (MVP):** analyst approves/rejects; every edit logged (auditability).
-7. **Publish:** API + dashboards; weekly diff notes ("this week: case B41 moved −0.1 because JPC testimony X").
-8. **Aged-well revisits:** time-triggered re-review (e.g., 'triple talaq FIR data, 12 months later'), updating the vindication ledger.
+## 7. Everything else the platform becomes (the "what more")
 
-## 5. MVP stack (build path you can start with)
-- **Backend:** FastAPI + Postgres(+pgvector) • **Jobs:** APScheduler/cron • **NLP/scoring:** any strong LLM with JSON-mode (schema-enforced) • **Front end:** Next.js dashboard (entity pages, case pages, heat tables, claim-check cards, rescale diffs) • **Hosting:** single VPS is enough.
-- **Seed load:** `data/scores_computed.csv` + `data/timeline.csv` → day-one content = this report.
-- **First vertical slice (2 weeks):** entities + timeline read API + static ledgers render. Week 3–4: ingest PIB+PRS+SCI; week 5: scoring drafts + rescale logs; week 6: claim-check UI.
+1. **Fact-check vernacular** — every claim ("Congress opposed UPI", "2G = ₹1.76L cr scam") becomes a Claim object with verdict workflow; words like TRUE/HALF-TRUE/FALSE are crowdsoured but juries certify. The entity/evidence graph makes verdicts fast.
+2. **Promise Register** — each manifesto point gets an ID and a status tracker (Delivered / Partial / Stalled / Broken / Open) voted annually. *Nobody in India maintains this at scale, forever.*
+3. **Report cards** — auto-PDF per entity & window: "BJP 2024-25 Report Card", "Rahul Gandhi: 5-year ledger", "Karnataka state govt, any 12 months". Our REPORT.md is literally the template for the first generated document class.
+4. **Topic dossiers** — query by tag: `federalism`, `farmers`, `press freedom`, `Kashmir` → timeline + scores + both-sides notes, printable.
+5. **Election season mode** — constituency pages, candidate quick-ledgers, "what did this MP score" cards shareable to WhatsApp (the real Indian broadcast medium).
+6. **Blind review mode** — rate a case with actor names masked; great for schools/researchers; kills halo effects.
+7. **Aged-well revisited feed** — time-triggered reopeners: "farm laws: 5 years on — final score?", "370: statehood restored year?" keeps history honest.
+8. **Embedding/API** — newsrooms and YouTubers embed live scoreboards (rate-limited API, attributed); journalists get a researchers' export tier.
+9. **Multilingual first** — Hindi + top regional languages at parity with English; the jury layer requires at least one local-language reader per regional case.
+10. **Civil-service exam/education pack** — "101 accountability cases" free module (viral distribution via coaching culture), driving the first 100k care-users.
 
-## 6. Guardrails
-- **No unsourced score, ever.** • **Both-sides rendering** for contested items. • **Party-agnostic grade counts** published monthly (proves the engine isn't over-reliant on one side's media ecology). • Adversarial test suite: seed claims known to be tricky ("Congress opposed UPI", "2G = ₹1.76L cr scam") must come out correctly nuanced before any release.
+## 8. Product surfaces
 
-## 7. What still needs you
-Next step (say the word): I scaffold the FastAPI+Next.js project in this repo, load the seed CSVs, wire the PIB/PRS/SCI ingesters, and stand up the weekly scoring job with the Kendall-τ rescale gate — then point a live preview at it.
+- **Entity page** — profile, trend line over years, top +/− cases, open challenges count.
+- **Case page** — evidence well (per type), parameter table with live median + band, discussion, challenge button, history diff view.
+- **Rule studio** — fork "Ideal-Party Charter", edit weights/source types, publish; others subscribe (your default feed respects your active rubric).
+- **Dashboards** — party/topic/year composites; "most challenged this week", "new consensus reached".
+- **Moderator console** — brigade alerts, jury queue, frozen topics.
+
+## 9. Governance & neutrality (the reason people will trust it)
+
+- Run as a **nonprofit trust** with a public charter (like an election-observer NGO); board must include declared members of at least 3 political leanings.
+- **No political ads, ever.** Funding: grants + API/subscription of analytics by media/NGOs + voluntary donations; funding sources disclosed quarterly (practice what you score).
+- **Source code, scoring engine, and aggregation logic public.** Secret moderation is the only thing closed.
+- Legal posture (India): court-orders and CAG/RBI data usage is safe; defamation risk lives on user claims → mandatory evidence-link rule + quick-response legal cell; DPDP Act compliance for voter metadata.
+
+## 10. Build plan
+
+| Phase | Output |
+|---|---|
+| P0 (this repo, done) | Seed data: entities/cases from `data/*.csv`; REPORT.md as first "report card" |
+| P1 (4–6 wks) | Read-only web app: entity/case pages, dataset browsing, search (FastAPI + Postgres + Next.js; live preview) |
+| P2 (+6 wks) | Accounts + trust profiles + first alternate rubric presets; score rendering per profile |
+| P3 (+8 wks) | Voting & challenge loops, juries, status machine, audit history |
+| P4 (+6 wks) | Fact-check objects, promise register, report-card generator (PDF), Hindi UI |
+| P5 | Anti-brigading hardening, pub API, embeddings, regional language packs, election mode |
+
+## 11. Why it survives
+- It takes **no editorial position** — the toughest group can't call it biased, they can only bring more evidence.
+- The **challenge loop** means errors self-heal publicly; credibility grows like Wikipedia's.
+- The **trust-profile dial** means opposite-lean users both see *their* receipt — and the divergence is itself published data (which becomes journalism).

@@ -11,3 +11,6 @@
 | report_template.md / tables/ | Build inputs used to render REPORT.md (kept for regeneration) |
 
 Regenerate tables/totals after editing scores.csv: see the python one-liner used in-session (compute = mean(params)×weight per actor).
+
+## App direction (v2, Sept 2026)
+The app is designed as a **people-run** system, not an AI oracle: users mint entity IDs, propose case-specific parameters, score with mandatory evidence links, set personal source-trust profiles (e.g. "court orders only"), and everything — even old scored items — stays challengeable forever. Consensus = quorum + supermajority under a leaning-balanced jury; consensus items go "stable", never "final". See `APP_SPEC.md` (v2) for the full loop, anti-brigading, promise register, and yearly-report-card generator.
