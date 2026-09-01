@@ -62,9 +62,10 @@ TOUR_STEPS = [
     ("Welcome to RajScore", "This is a crowd-run accountability platform: every score comes from people voting with evidence, and nothing is ever permanent."),
     ("Step 1 — Read a case", "Cases are incidents/policies with per-case parameters. Every parameter shows its evidence links and evidence grade (A/B/C). <a href='/cases'>Open the case ledger</a>."),
     ("Step 2 — Set your trust dial", "Go to Rules &amp; Trust and pick which evidence grades YOU accept: official-only, balanced, or open. All scores on the site recompute for your choice."),
-    ("Step 3 — The fundamentals scale", "Every parameter is composed from atomic fundamentals on a 0–100 severity scale — corruption, opacity, loss of lives, institution-building… See the spectrum at <a href='/fundamentals'>Fundamentals</a>."),
-    ("Step 4 — Vote with receipts", "Sign in, then on any case vote on a parameter: score −5..+5 + an evidence link + the EVENT DATE. Community consensus needs 5+ votes at ⅔ agreement."),
-    ("Step 5 — Challenge anything", "Even a 50-year-old verdict can be re-opened: hit 'challenge', supply counter-evidence and its date. A challenged item is flagged until the community resolves it."),
+    ("Step 3 — Fundamentals: atoms, parts & multipliers", "Parameters are composed from atomic fundamentals on a 0–100 scale — and atoms split further (opacity → press-access, data-withholding…), while <b>modifiers</b> multiply context: Parliament ×1.5, social media ×0.6, chief ×1.25, supporter ×0.7, riots followed ×1.8. See <a href='/fundamentals'>Fundamentals</a>."),
+    ("Step 4 — Vote with receipts", "Sign in, then on any case vote on a parameter: score −5..+5 + an evidence link + the EVENT DATE. Community consensus needs 5+ votes at ⅔ agreement. More aspects assessed = finer signal — check the coverage meter on each case."),
+    ("Step 5 — Build case threads", "Every case has a dated <b>thread</b>: add milestones (who said/did/ruled what, when, with proof) and watch history assemble itself. Example: the Ayodhya case thread."),
+    ("Step 5b — Challenge anything", "Even a 50-year-old verdict can be re-opened: hit 'challenge', supply counter-evidence and its date. A challenged item is flagged until the community resolves it."),
     ("Step 6 — Report cards", "On any entity page hit 'report card' to get a dated, windowed scorecard (Ctrl+P to PDF). The data is also a fact-check engine — see /claims."),
 ]
 

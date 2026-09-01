@@ -311,7 +311,8 @@ def _migrate(con):
     for sql in ('ALTER TABLE votes ADD COLUMN "when" TEXT DEFAULT ""',
                 'ALTER TABLE challenges ADD COLUMN "when" TEXT DEFAULT ""',
                 'ALTER TABLE case_params ADD COLUMN creator INTEGER',
-                'ALTER TABLE case_params ADD COLUMN created REAL'):
+                'ALTER TABLE case_params ADD COLUMN created REAL',
+                'ALTER TABLE fundamentals ADD COLUMN parent TEXT DEFAULT ""'):
         try: con.execute(sql)
         except sqlite3.OperationalError: pass
 
@@ -325,7 +326,17 @@ def seed_fundamentals():
             [tuple(r) for r in FUND_SEEDS])
     con.executemany(
         "INSERT OR IGNORE INTO param_funds(case_id,param,slug,strength) VALUES(?,?,?,?)", PARAM_FUND_SEEDS)
+    # sub-fundamentals (protons/electrons) and modifiers (multipliers)
+    con.executemany(
+        "INSERT OR IGNORE INTO fundamentals(slug,name,definition,polarity,position,range_lo,range_hi,status,created,parent)"
+        " VALUES(?,?,?,?,?,?,?,'CONSENSUS',0,?)",
+        [(sl, n, d, pol, pos, lo, hi, par) for (sl, n, d, pol, pos, lo, hi, par) in SUB_FUND_SEEDS])
+    con.executemany(
+        "INSERT OR IGNORE INTO fundamentals(slug,name,definition,polarity,position,range_lo,range_hi,status,created,parent)"
+        " VALUES(?,?,?,'modifier',?,?,?,'CONSENSUS',0,'')",
+        [(sl, n, d, m, max(0.2, m-0.2), min(3.0, m+0.2)) for (sl, n, d, m) in MODIFIER_SEEDS])
     con.commit(); con.close()
+    seed_case_events()
 
 def fund_rows(): return q("SELECT * FROM fundamentals ORDER BY position")
 
@@ -351,9 +362,100 @@ def compose_points(funds):
     total = 0.0
     for f in funds:
         sign = -1 if f["polarity"] == "harm" else 1
-        total += sign * (f["position"] or 0) * f["strength"]
+        strength = f["strength"] if "strength" in [k for k in f.keys()] else 1.0
+        total += sign * (f["position"] or 0) * strength
     return round(total, 1)
 
 def composed_to_five(raw):
     """Map fundamental-scale points into the legacy -5..+5 pool (crowd-added params)."""
     return round(max(-5, min(5, raw / 20.0)), 2)
+
+# ---------------------------------------------------------------------------
+# P3: SUB-FUNDAMENTALS (protons/electrons) + MODIFIERS (universal multipliers)
+# + CASE THREADS (per-case dated, actor-POV timelines, crowd-built)
+# ---------------------------------------------------------------------------
+
+# modifiers: universal multipliers. position column stores the multiplier (0.2..3.0).
+MODIFIER_SEEDS = [
+    ("venue-parliament",   "Said/done in Parliament",        "The floor of the House amplifies — words there are matters of record", 1.5),
+    ("venue-press-conf",   "Said in a formal press conference","On-record, with press present",                                    1.2),
+    ("venue-rally",        "Said at a public rally",          "Public but rhetorical setting",                                     1.0),
+    ("venue-social-media", "Said on social media",            "Lowest venue weight — noise floor",                                 0.6),
+    ("role-party-chief",   "By the party chief / sitting PM-CM","Leader's words carry the institution's weight",                   1.25),
+    ("role-member",        "By a regular member/MP/MLA",      "Standard responsibility",                                           1.0),
+    ("role-supporter",     "By a rank-and-file supporter",    "Lowest responsibility tier",                                        0.7),
+    ("cons-none",          "No traced consequence",           "Words ended where they started",                                    1.0),
+    ("cons-sentiment",     "Hurt public sentiment",           "Anger/hurt documented in reporting",                                1.2),
+    ("cons-violence",      "Violence or riots followed",      "Blood on the trail — multiply accordingly",                         1.8),
+    ("cons-law",           "Official/legal action followed",  "Arrests, bans, cases, dismissals followed",                         1.4),
+    ("cons-correction",    "Voluntary correction/apology",    "Owns the error — de-amplifies",                                     0.8),
+]
+
+# sub-fundamentals: the protons/electrons. (slug, name, definition, polarity, position, lo, hi, parent)
+SUB_FUND_SEEDS = [
+    ("no-press-access",      "No press access",            "Avoiding unscripted press interaction",              "harm", 5,  3, 8,  "opacity"),
+    ("data-withholding",     "Withholding official data",  "Suppressing reports/reports released late",          "harm", 8,  5, 12, "opacity"),
+    ("rti-evasion",          "RTI / disclosure evasion",   "Blocking statutory disclosure routes",               "harm", 9,  6, 13, "opacity"),
+    ("oded-assets",          "Disproportionate assets",    "Wealth beyond declared income, evidenced",           "harm", 38, 30, 48,"corruption-proven"),
+    ("bribery-documented",   "Documented bribery",         "Bribes evidenced on record (tapes, FIR, judgement)", "harm", 40, 32, 52,"corruption-proven"),
+    ("falsehood-lie",        "A lie (demonstrably false)", "Not exaggeration — false, and no correction offered","harm", 6,  3, 10, "rhetoric-slip"),
+    ("exaggeration",         "Exaggeration/spin",          "A claim beyond what evidence supports",              "harm", 3,  1, 6,  "rhetoric-slip"),
+    ("propaganda-machinery", "Propaganda machinery",       "Industrial-scale narrative machinery",               "harm", 28, 18, 40,"institution-capture"),
+    ("minority-targeting",   "Minority targeting",         "Singling out a community for blame",                 "harm", 32, 22, 42,"othering-speech"),
+    ("crisis-silence",       "Silence during crisis",      "Visible absence when response was owed",             "harm", 20, 12, 30,"norm-erosion"),
+    ("debate-avoidance",     "Debate/committee avoidance", "Skipping scrutiny of bills",                         "harm", 16, 10, 24,"norm-erosion"),
+    ("transparent-books",    "Transparent books",          "Accounts/funding open to audit",                     "virtue",25, 15, 35,"reform-structural"),
+    ("credit-sharing",       "Credit-sharing",             "Publicly acknowledges others' work incl. opponents", "virtue",18, 10, 28,"unity-act"),
+]
+
+_CASE_EVENT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS case_events(
+  id INTEGER PRIMARY KEY, case_id TEXT, ymd TEXT, actor TEXT, pov TEXT,
+  text TEXT, evidence_url TEXT, added_by INTEGER, created REAL);
+"""
+
+# Ayodhya/Ram Mandir example thread, matching the user's example.
+CASE_EVENT_SEEDS = [
+    ("1992-12-06", "party:bjp",        "crowd event", "Babri Masjid demolished at Ayodhya by kar sevaks amid a BJP-VHP mobilisation; Liberhan panel later finds 68 people culpable", "https://en.wikipedia.org/wiki/Demolition_of_the_Babri_Masjid"),
+    ("2019-11-09", "institution:sci",   "ruled",       "Supreme Court 5-0: the 1949 idol placement and 1992 demolition were an 'egregious violation of the rule of law'; land to a trust for the temple, 5 acres allotted for a mosque", "https://www.sci.gov.in/supreme-court-judgements/"),
+    ("2020-09-30", "institution:court", "ruled",       "Special CBI court acquits all 32 demolition accused citing lack of conclusive proof (appeal lives on)", "https://en.wikipedia.org/wiki/Demolition_of_the_Babri_Masjid#Trial"),
+    ("2024-01-22", "person:narendra-modi", "did",      "Pran-pratishtha consecration of the Ram Mandir led by the PM in a state-level ceremony", "https://pib.gov.in/PressReleasePage.aspx?PRID=1999797"),
+]
+
+def seed_case_events():
+    con = sqlite3.connect(DB)
+    con.executescript(_CASE_EVENT_SCHEMA)
+    # link thread to whichever case mentions Ayodhya/Babri
+    row = con.execute("SELECT id FROM cases WHERE lower(title) LIKE '%ayodhya%' OR lower(title) LIKE '%babri%' LIMIT 1").fetchone()
+    cid = row[0] if row else None
+    if cid and con.execute("SELECT COUNT(*) FROM case_events").fetchone()[0] == 0:
+        con.executemany(
+            "INSERT INTO case_events(case_id,ymd,actor,pov,text,evidence_url,added_by,created) VALUES(?,?,?,?,?,?,0,0)",
+            [(cid,) + s for s in CASE_EVENT_SEEDS])
+    con.commit(); con.close()
+
+def case_events(cid):
+    return q("SELECT ce.*, u.username FROM case_events ce LEFT JOIN users u ON u.id=ce.added_by "
+             "WHERE ce.case_id=? ORDER BY ce.ymd, ce.id", (cid,))
+
+def fund_children(slug):
+    return q("SELECT * FROM fundamentals WHERE parent=? ORDER BY position", (slug,))
+
+def case_coverage(case_id):
+    """Aspect-coverage meter: distinct fundamentals composed across this case's params,
+    plus how many params are composed at all. More aspects = finer signal."""
+    n_params = q("SELECT count(*) c FROM case_params WHERE case_id=?", (case_id,), one=True)["c"]
+    composed = q("SELECT count(DISTINCT param) c FROM param_funds WHERE case_id=?", (case_id,), one=True)["c"]
+    aspects = q("SELECT count(DISTINCT slug) c FROM param_funds WHERE case_id=?", (case_id,), one=True)["c"]
+    if aspects <= 1: label, cls = "thin", "bad"
+    elif aspects <= 4: label, cls = "moderate", "warn"
+    else: label, cls = "rich", "ok"
+    return aspects, composed, n_params, label, cls
+
+def compose_with_modifiers(funds, modifiers):
+    """raw = signed sum(fund positions * strengths) * product(modifier multipliers)."""
+    base = compose_points(funds)
+    mult = 1.0
+    for m in modifiers:
+        mult *= (m["position"] or 1.0)
+    return round(base * mult, 1)

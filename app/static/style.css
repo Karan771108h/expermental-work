@@ -79,3 +79,12 @@ thead th{position:sticky;top:58px;z-index:2}
 .hero h1{background:linear-gradient(90deg,var(--navy),var(--saffron));-webkit-background-clip:text;background-clip:text;color:transparent}
 .card:hover{box-shadow:0 4px 14px rgba(15,23,42,.07);transition:box-shadow .15s}
 @media (max-width:720px){main{padding:0 .6rem}.brand small{display:none}}
+
+/* ---- P3: threads + sub-rows ---- */
+.thread{border-left:3px solid #dbeafe;padding-left:.8rem;margin:.4rem 0 1rem}
+.trev{display:flex;gap:.9rem;padding:.45rem 0;border-bottom:1px dashed var(--line)}
+.tdate{flex:0 0 92px;font-variant-numeric:tabular-nums;color:var(--navy);font-weight:700;font-size:.82rem}
+.tpov{display:inline-block;background:#fef3c7;color:#92400e;border-radius:6px;padding:0 .35rem;font-size:.7rem;text-transform:uppercase;letter-spacing:.04em}
+tr.subrow td{background:#fbfdff}
+tr.subrow td:first-child{border-left:3px solid #c7d2fe}
+.badge.bad-sub{}

@@ -26,6 +26,14 @@ Status machine: SEEDED → COMMUNITY REVIEW → **CONSENSUS** (≥5 votes, ≥�
 - **Dates are mandatory everywhere** (votes, challenges, fundamental placements/proposals) → `/timeline` now has a **community activity layer** alongside the proof-linked master timeline.
 - **First-run tutorial**: modal walkthrough on first visit + `/tour` page; replayable from the footer.
 
+### P3 layer — sub-fundamentals, modifiers, case threads
+
+- **Atoms split further**: fundamentals carry sub-parts (opacity → no-press-access / data-withholding / RTI-evasion; proven-corruption → disproportionate-assets / documented bribery; rhetoric-slip → lie vs exaggeration). Nested on `/fundamentals` with parent links.
+- **Modifiers multiply context**: universal multipliers — venue (`venue-parliament ×1.5`, `venue-social-media ×0.6`), role (`role-party-chief ×1.25`, `role-supporter ×0.7`), consequence (`cons-violence ×1.8`, `cons-correction ×0.8`). Example: lie (≈6) × Parliament × chief × riots = **−20.3 pts**; same words on social media by a supporter = **−2.5 pts**. Live calculator on the fundamentals page.
+- **Coverage meter** on every case (thin/moderate/rich): distinct fundamentals assessed ÷ params — fewer aspects = coarser signal, visible to everyone.
+- **Case threads**: per-case dated timelines with actor POVs (`said/did/ruled/alleged/observed`), crowd-built with mandatory dates + proof. Worked example seeded on the Ayodhya case (C10); threads also merge into the global `/timeline` activity layer.
+
+
 --- (Congress vs BJP, Modi vs Rahul) — 1947 → 1 Sep 2026
 
 | File | What it is |

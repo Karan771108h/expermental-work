@@ -217,6 +217,7 @@ def case_detail(request: Request, cid: str):
     user, profile = ctx(request)
     c = db.q("SELECT * FROM cases WHERE id=?", (cid,), one=True)
     if not c: return HTMLResponse(R.page("Not found", "<div class='alert'>Unknown case.</div>", user, profile, db.PROFILE_LABELS[profile]), 404)
+    aspects, composed_n, n_params, cov_label, cov_cls = db.case_coverage(cid)
     params = db.q("SELECT * FROM case_params WHERE case_id=? ORDER BY rowid", (cid,))
     rows_html = []
     for p in params:
@@ -239,11 +240,37 @@ def case_detail(request: Request, cid: str):
         only = """<div class="alert">⚔ This case is under an OPEN CHALLENGE. Its scores keep counting but are
         flagged disputed until the jury loop (P3) resolves. Bring evidence, not volume.</div>"""
     login_note = "" if user else '<div class="flash">You are browsing anonymously — <a href="/auth">join/login</a> to vote or challenge.</div>'
+    thread = db.case_events(cid)
+    trows = "".join(f"""<div class="trev"><span class="tdate">{R.esc(e['ymd'])}</span>
+      <div><span class="tpov">{R.esc(e['pov'])}</span> <a class="tag" href="/entity/{R.esc(e['actor'])}">{R.esc(e['actor'])}</a>
+      {R.esc(e['text'])} <a href="{R.esc(e['evidence_url'])}" target="_blank" rel="noopener">[proof]</a>
+      {f'<span class="muted"> — added by {R.esc(e["username"])}' + '</span>' if e['username'] else ''}</div></div>""" for e in thread)
+    thread_html = (f'<div class="thread">{trows}</div>' if trows else
+                   '<p class="muted">No dated milestones yet — be the first to build this case\'s thread below. (See the Ayodhya case <a href="/case/C10">C10</a> for a worked example.)</p>')
+    ent_datalist = "".join(f'<option value="{e["id"]}">' for e in db.q("SELECT id FROM entities"))
     body = f"""<div class="card">
       <h1>{R.esc(c['title'])}</h1>
       <p class="muted">{R.esc(c['period'])} · domain <span class="tag">{R.esc(c['domain'])}</span> · weight
-      <b>w{c['weight']}</b> · status {R.badge(st)}</p></div>
+      <b>w{c['weight']}</b> · status {R.badge(st)}</p>
+      <p class="muted">🔬 Assessment coverage: <span class="badge {cov_cls}">{cov_label}</span> —
+      {aspects} distinct fundamental(s) across {composed_n}/{n_params} composed parameters.
+      <i>Fewer aspects = coarser signal; add composed parameters and dated events to sharpen it.</i></p></div>
       {only}{login_note}
+      <h2>Case thread — dated milestones with actor POVs</h2>
+      {thread_html}
+      <form class="card" id="eventform" onsubmit="event.preventDefault();">
+        <b>Add a dated milestone</b> <span class="muted">(who said/did what, when — proof required)</span>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+          <div><label>📅 Date</label><input name="ymd" type="text" placeholder="YYYY-MM-DD" required></div>
+          <div><label>Actor (entity id or name)</label><input name="actor" list="ents" required><datalist id="ents">{ent_datalist}</datalist></div>
+          <div><label>POV kind</label><select name="pov"><option>observed</option><option>said</option><option>did</option>
+            <option>ruled</option><option>alleged</option></select></div>
+        </div>
+        <label>What happened (one line, neutral)</label><input name="text" maxlength="600" required>
+        <label>Proof URL</label><input name="evidence_url" type="url" required placeholder="https://…">
+        <input type="hidden" name="case_id" value="{R.esc(cid)}">
+        <br><br><button class="btn">Add to thread</button><span id="emsg" class="muted"></span>
+      </form>
       <h2>Parameters & evidence (each line independently challengeable)</h2>
       <table><thead><tr><th>Parameter / actor</th><th>Seed score</th><th>Live median</th><th>Basis · grade · sources</th></tr></thead>
       <tbody>{''.join(rows_html)}</tbody></table>
@@ -273,7 +300,7 @@ def case_detail(request: Request, cid: str):
         <br><button class="btn">Compute & add parameter</button><span id="pmsg" class="muted"></span>
       </form>
       <h2>Challenge this case <span class="muted">(even a 50-year-old verdict — re-open it with evidence)</span></h2>
-      <form class="card" onsubmit="event.preventDefault();">
+      <form class="card" id="chform" onsubmit="event.preventDefault();">
         <label>What is wrong? (datum, grading, weight, framing)</label><input name="note" required>
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
           <div><label>Your counter-evidence URL (required)</label><input name="evidence_url" type="url" required placeholder="https://…"></div>
@@ -282,12 +309,15 @@ def case_detail(request: Request, cid: str):
         <br><br><button class="btn warn">Open challenge</button><span id="cmsg" class="muted"></span>
       </form>"""
     js = R.JS_UTILS + """
-      const f0=document.getElementById('voteform'), f1=document.getElementById('paramform'), f2=document.querySelectorAll('form.card')[2];
-      f0.onsubmit=async()=>{const r=await postJSON('/api/vote',formVals(f0));
+      const ef=document.getElementById('eventform');
+      ef.onsubmit=async()=>{const r=await postJSON('/api/event/add',formVals(ef));
+        ef.querySelector('#emsg').textContent=r.ok?' ✔ milestone added to the thread':(' ✖ '+(r.body.detail||'error')); if(r.ok)setTimeout(()=>location.reload(),900);};
+      const f0=document.getElementById('voteform'), f1=document.getElementById('paramform'), f2=document.getElementById('chform');
+      if(f0) f0.onsubmit=async()=>{const r=await postJSON('/api/vote',formVals(f0));
         f0.querySelector('#msg').textContent=r.ok?' ✔ vote sealed — thank you':(' ✖ '+(r.body.detail||'error')); if(r.ok)setTimeout(()=>location.reload(),900);};
-      f1.onsubmit=async()=>{const r=await postJSON('/api/param/add',formVals(f1));
+      if(f1) f1.onsubmit=async()=>{const r=await postJSON('/api/param/add',formVals(f1));
         f1.querySelector('#pmsg').textContent=r.ok?(' ✔ added — fundamental-scale '+r.body.raw_points+' pts, normalised '+r.body.normalised):(' ✖ '+(r.body.detail||'error')); if(r.ok)setTimeout(()=>location.reload(),1100);};
-      f2.onsubmit=async()=>{const d=formVals(f2); d.kind='case'; d.object_id=d.case_id||document.querySelector('[name=case_id]').value;
+      if(f2) f2.onsubmit=async()=>{const d=formVals(f2); d.kind='case'; d.object_id=d.case_id||document.querySelector('[name=case_id]').value;
         const r=await postJSON('/api/challenge',d);
         f2.querySelector('#cmsg').textContent=r.ok?' ⚔ challenge is open — flagged site-wide':(' ✖ '+(r.body.detail||'error')); if(r.ok)setTimeout(()=>location.reload(),900);};
     """
@@ -315,6 +345,12 @@ def timeline(request: Request, frm: str = "1947", to: str = "2026"):
                      LEFT JOIN users u ON u.id=c.user_id WHERE c."when"!='' ORDER BY c.created DESC"""):
         acts.append((ch["w"], f'<b>challenge</b> by {R.esc(ch["username"] or "?")} on '
                      f'<a href="/case/{R.esc(ch["object_id"])}">{R.esc(ch["object_id"])}</a>: {R.esc(ch["note"])}', ""))
+    for e in db.q("""SELECT ce.ymd w, ce.actor, ce.pov, ce.text, ce.case_id, u.username FROM case_events ce
+                     LEFT JOIN users u ON u.id=ce.added_by ORDER BY ce.ymd DESC LIMIT 200"""):
+        who = f' <span class="muted">(by {R.esc(e["username"])})</span>' if e["username"] else ""
+        acts.append((e["w"],
+            f'<b>milestone</b> on <a href="/case/{R.esc(e["case_id"])}">{R.esc(e["case_id"])}</a> · '
+            f'<b>{R.esc(e["actor"])}</b> {R.esc(e["pov"])}: {R.esc(e["text"])}' + who, ""))
     for fd in db.q("""SELECT slug, name, position, created FROM fundamentals WHERE status='PROPOSED'"""):
         d = time.strftime("%Y-%m-%d", time.localtime(fd["created"])) if fd["created"] else ""
         acts.append((d, f'<b>new fundamental proposed</b>: <a href="/fundamentals#{R.esc(fd["slug"])}">{R.esc(fd["name"])}</a>'
@@ -544,54 +580,96 @@ def api_challenge(request: Request, ch: ChallengeIn):
 def fundamentals(request: Request):
     user, profile = ctx(request)
     funds = db.fund_rows()
-    spec = R.spectrum_svg(funds)
+    spec = R.spectrum_svg([f for f in funds if f["polarity"] != "modifier"])
+    parents = {f["slug"]: f for f in funds}
+    children = {}
+    for f in funds:
+        if f["parent"]: children.setdefault(f["parent"], []).append(f)
+
+    def fund_row(f, indent=False):
+        m, c = db.fund_vote_stats(f["slug"])
+        crowd = f'<span class="muted">crowd mean {m:.1f} from {c} placement(s)</span>' if c else '<span class="muted">anchor position (seeded)</span>'
+        place_max = 3 if f["polarity"] == "modifier" else 100
+        ptag = (f'<a class="tag" href="#{f["parent"]}">part of {R.esc(parents[f["parent"]]["name"])}</a>'
+                if f["parent"] and f["parent"] in parents else "")
+        return f"""<tr id="{f['slug']}" class="{'subrow' if indent else ''}">
+          <td>{('&nbsp;&nbsp;└ ' if indent else '')}<b>{R.esc(f['name'])}</b><br><span class="muted">{R.esc(f['definition'])}</span> {ptag}</td>
+          <td class="num"><b>{f['position']:g}</b>{('×' if f['polarity']=='modifier' else '')}<br><span class="muted">range {f['range_lo']:g}–{f['range_hi']:g}</span></td>
+          <td>{R.badge(f['status'])}<br>{crowd}</td>
+          <td><form class="inline placeform" data-slug="{R.esc(f['slug'])}">
+            <input name="position" type="number" min="0" max="{place_max}" step="0.05" placeholder="{place_max} max" style="width:86px" required>
+            <input name="when" type="text" placeholder="YYYY-MM-DD" style="width:120px" required>
+            <button class="btn ghost">place</button><span class="fm muted"></span></form></td>
+        </tr>"""
+
     def band(pol):
         out = []
-        for f in [x for x in funds if x["polarity"] == pol]:
-            m, c = db.fund_vote_stats(f["slug"])
-            crowd = f'<span class="muted">crowd mean {m:.1f} from {c} placement(s)</span>' if c else '<span class="muted">anchor position (seeded)</span>'
-            out.append(f"""<tr id="{f['slug']}">
-              <td><b>{R.esc(f['name'])}</b><br><span class="muted">{R.esc(f['definition'])}</span></td>
-              <td class="num"><b>{f['position']:g}</b><br><span class="muted">range {f['range_lo']:g}–{f['range_hi']:g}</span></td>
-              <td>{R.badge(f['status'])}<br>{crowd}</td>
-              <td><form class="inline placeform" data-slug="{R.esc(f['slug'])}">
-                <input name="position" type="number" min="0" max="100" step="0.5" placeholder="0–100" style="width:86px" required>
-                <input name="when" type="text" placeholder="YYYY-MM-DD" style="width:120px" required>
-                <button class="btn ghost">place</button><span class="fm muted"></span></form></td>
-            </tr>""")
+        for f in [x for x in funds if x["polarity"] == pol and not x["parent"]]:
+            out.append(fund_row(f))
+            for c in children.get(f["slug"], []):
+                out.append(fund_row(c, indent=True))
         return "".join(out)
+
+    mods = "".join(fund_row(f) for f in funds if f["polarity"] == "modifier")
+    catalog_js = __import__("json").dumps({f["slug"]: [f["name"], f["position"], f["polarity"]] for f in funds})
+    parent_opts = '<option value="">— none (top level) —</option>' + "".join(
+        f'<option value="{f["slug"]}">{R.esc(f["name"])}</option>' for f in funds if f["polarity"] in ("harm", "virtue") and not f["parent"])
     body = f"""<h1>The fundamentals scale</h1>
-    <p>This platform's bedrock: <b>atomic, irreplaceable building blocks</b> — things like
-    <i>opacity</i>, <i>proven corruption</i>, <i>loss of lives</i>, <i>institution-building</i> — each with a
-    position on a 0–100 severity scale. <b>Parameters are compositions of fundamentals</b>, so unlike acts can
-    never be scored equal by careless labels: a press-shy leader (opacity ≈ 6) and a proven institutional scam
-    (≈ 50) land in different universes by construction.</p>
+    <p>Atomic, irreplaceable building blocks on a 0–100 severity scale — and <b>everything decomposes further</b>:
+    each fundamental splits into sub-parts (its protons and electrons — e.g. <i>opacity</i> →
+    <i>no-press-access</i>, <i>data-withholding</i>, <i>RTI evasion</i>), and <b>modifiers</b> multiply any
+    composition for context: said in Parliament (×1.5) is not said on social media (×0.6); by a party chief
+    (×1.25) is not by a supporter (×0.7); followed by riots (×1.8) is not followed by nothing (×1.0).</p>
     {spec}
-    <div class="card"><b>How placement works.</b> New fundamentals are proposed below with a definition and a
-    suggested position roughly relative to its neighbours ("worse than promise-breaking, milder than power misuse").
-    Members then <b>place</b> it on the scale (with a date — everything here is timestamped). At ≥5 placements the
-    consensus position locks to the crowd mean, and stays re-challengeable forever. Weights are relative: the
-    whole scale can be rescaled by any positive constant without changing any ranking — what matters is
-    <i>where something sits beside everything else</i>.</div>
-    <h2 id="harm-band">Harm fundamentals (score −)</h2>
-    <table><thead><tr><th>Fundamental</th><th class="num">Position (0–100)</th><th>Status</th><th>Cast your placement</th></tr></thead>
+    <div class="card"><b>The algebra of consequence:</b> a <i>lie</i> (≈6) <i>in Parliament</i> (×1.5) by a
+    <i>party chief</i> (×1.25) preceding <i>riots</i> (×1.8) = <b>−20.3 pts</b>. The same claim on social media
+    by a supporter, no consequence = <b>−2.5 pts</b>. Same word — different universes, by construction.
+    Compose parameters from these blocks on any <a href="/cases">case page</a>.</div>
+    <div class="card"><h2>🧮 Composition calculator</h2>
+      <div class="grid" style="grid-template-columns:1fr 1fr"><div>
+        <label>Fundamentals (slug:strength, one per line)</label>
+        <textarea id="cf" rows="4" style="width:100%" placeholder="falsehood-lie:1.0"></textarea></div>
+      <div><label>Modifiers (slug per line)</label>
+        <textarea id="cm" rows="4" style="width:100%" placeholder="venue-parliament&#10;role-party-chief&#10;cons-violence"></textarea></div></div>
+      <button class="btn" onclick="calc()">Compute</button> <b id="cout"></b></div>
+    <h2 id="harm-band">Harm fundamentals — atoms &amp; their parts</h2>
+    <table><thead><tr><th>Fundamental</th><th class="num">Position (0–100)</th><th>Status</th><th>Cast your placement (dated)</th></tr></thead>
     <tbody>{band('harm')}</tbody></table>
-    <h2 id="virtue-band">Virtue fundamentals (score +)</h2>
+    <h2 id="virtue-band">Virtue fundamentals — atoms &amp; their parts</h2>
     <table><thead><tr><th>Fundamental</th><th class="num">Position (0–100)</th><th>Status</th><th>Cast your placement</th></tr></thead>
     <tbody>{band('virtue')}</tbody></table>
-    <div class="card"><h2>Propose a new fundamental <span class="badge warn">irreplaceable once in ledger</span></h2>
-    <p class="muted">Ask first: is it <b>atomic</b> (can't be explained as two existing fundamentals combined)?
-    Does it deserve its own slot on the scale for decades? Examples rejected: 'Gujarat 2002' (not atomic — an event,
-    not a fundamental). Example accepted: 'state capacity failure in crisis'.</p>
+    <h2 id="modifier-band">Modifiers — universal multipliers</h2>
+    <table><thead><tr><th>Modifier</th><th class="num">Multiplier (×)</th><th>Status</th><th>Cast your placement</th></tr></thead>
+    <tbody>{mods}</tbody></table>
+    <div class="card"><h2>Propose a new fundamental, sub-part, or modifier <span class="badge warn">irreplaceable once in ledger</span></h2>
+    <p class="muted">Ask first: is it <b>atomic</b> (can't be explained as two existing blocks combined)?
+    If it belongs under an existing fundamental, choose that parent. Modifiers are universal multipliers
+    (venue / role / consequence…).</p>
     <form class="grid" id="propform" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
       <div><label>Name (short)</label><input name="name" required maxlength="60"></div>
       <div><label>Definition (one sentence, objective)</label><input name="definition" required></div>
-      <div><label>Polarity</label><select name="polarity"><option>harm</option><option>virtue</option></select></div>
-      <div><label>Your proposed position (0–100)</label><input name="position" type="number" min="0" max="100" step="0.5" required></div>
+      <div><label>Kind</label><select name="polarity"><option>harm</option><option>virtue</option><option>modifier</option></select></div>
+      <div><label>Parent (if sub-part)</label><select name="parent">{parent_opts}</select></div>
+      <div><label>Your proposed position (0–100) / multiplier (0.2–3.0)</label><input name="position" type="number" min="0" max="100" step="0.05" required></div>
       <div><label>Date</label><input name="when" type="text" placeholder="YYYY-MM-DD" required></div>
       <div><label>&nbsp;</label><button class="btn">Propose</button><span class="pm muted"></span></div>
     </form></div>"""
     js = R.JS_UTILS + """
+    var CAT=%CAT%;
+    function calc(){
+      var s=0, msgs=[];
+      document.getElementById('cf').value.split('\n').forEach(function(l){
+        l=l.trim(); if(!l) return; var parts=l.split(':'), slug=parts[0].trim(), st=parseFloat(parts[1]||'1');
+        var f=CAT[slug]; if(!f){msgs.push('unknown: '+slug); return;}
+        if(f[2]==='modifier'){msgs.push(slug+' is a modifier — put it in the right box'); return;}
+        s += (f[2]==='harm'?-1:1) * f[1] * st; });
+      var m=1;
+      document.getElementById('cm').value.split('\n').forEach(function(l){
+        l=l.trim(); if(!l) return; var f=CAT[l]; if(!f||f[2]!=='modifier'){msgs.push('not a modifier: '+l); return;} m*=f[1]; });
+      var raw=s*m, norm=Math.max(-5, Math.min(5, raw/20));
+      document.getElementById('cout').textContent = (msgs.length? msgs.join('; ')+' — ':'')
+        + 'fundamental-scale '+(raw>0?'+':'')+raw.toFixed(1)+' pts → score-pool '+(norm>0?'+':'')+norm.toFixed(2)+'  (context ×'+m.toFixed(2)+')';
+    }
     document.querySelectorAll('form.placeform').forEach(f=>{f.addEventListener('submit',async e=>{e.preventDefault();
       const d=formVals(f); d.slug=f.dataset.slug;
       const r=await postJSON('/api/fundamental/place',d);
@@ -601,7 +679,7 @@ def fundamentals(request: Request):
       const r=await postJSON('/api/fundamental/propose',formVals(pf));
       pf.querySelector('.pm').textContent = r.ok?' ✔ proposed — visible in the ledger':(' ✖ '+(r.body.detail||'error'));
       if(r.ok) setTimeout(()=>location.reload(),900);};
-    """
+    """.replace("%CAT%", catalog_js)
     return R.page("Fundamentals", body, user, profile, db.PROFILE_LABELS[profile], extra_js=js)
 
 class FundPlaceIn(BaseModel):
@@ -611,10 +689,13 @@ class FundPlaceIn(BaseModel):
 def api_fund_place(request: Request, fp: FundPlaceIn):
     user, _ = ctx(request)
     if not user: return JSONResponse({"detail": "login required"}, 401)
-    if not (0 <= fp.position <= 100): return JSONResponse({"detail": "position must be 0–100"}, 400)
-    if not valid_when(fp.when): return JSONResponse({"detail": "date required (YYYY-MM-DD)"}, 400)
-    if not db.q("SELECT slug FROM fundamentals WHERE slug=?", (fp.slug,), one=True):
+    fr = db.q("SELECT polarity FROM fundamentals WHERE slug=?", (fp.slug,), one=True)
+    if not fr:
         return JSONResponse({"detail": "unknown fundamental"}, 400)
+    hi = 3.0 if fr["polarity"] == "modifier" else 100.0
+    if not (0 <= fp.position <= hi):
+        return JSONResponse({"detail": f"value must be 0–{hi:g} for this kind"}, 400)
+    if not valid_when(fp.when): return JSONResponse({"detail": "date required (YYYY-MM-DD)"}, 400)
     con = __import__("sqlite3").connect(db.DB)
     con.execute('INSERT INTO fund_votes(slug,user_id,position,"when",created) VALUES(?,?,?,?,?) '
                 'ON CONFLICT(slug,user_id) DO UPDATE SET position=excluded.position, "when"=excluded."when", created=excluded.created',
@@ -624,26 +705,55 @@ def api_fund_place(request: Request, fp: FundPlaceIn):
     return {"ok": True}
 
 class FundPropIn(BaseModel):
-    name: str; definition: str; polarity: str = "harm"; position: float; when: str = ""
+    name: str; definition: str; polarity: str = "harm"; position: float; when: str = ""; parent: str = ""
 
 @app.post("/api/fundamental/propose")
 def api_fund_propose(request: Request, fp: FundPropIn):
     user, _ = ctx(request)
     if not user: return JSONResponse({"detail": "login required"}, 401)
     if not valid_when(fp.when): return JSONResponse({"detail": "date required (YYYY-MM-DD)"}, 400)
-    if fp.polarity not in ("harm", "virtue"): return JSONResponse({"detail": "polarity = harm|virtue"}, 400)
+    if fp.polarity not in ("harm", "virtue", "modifier"): return JSONResponse({"detail": "kind = harm|virtue|modifier"}, 400)
+    maxpos, minpos = (3.0, 0.2) if fp.polarity == "modifier" else (100.0, 0.0)
+    if not (minpos <= fp.position <= maxpos):
+        return JSONResponse({"detail": f"value must be {minpos:g}–{maxpos:g} for a {fp.polarity}"}, 400)
     slug = re.sub(r"[^a-z0-9]+", "-", fp.name.strip().lower()).strip("-")[:40]
     if not slug: return JSONResponse({"detail": "bad name"}, 400)
     if db.q("SELECT slug FROM fundamentals WHERE slug=?", (slug,), one=True):
         return JSONResponse({"detail": "a fundamental with this name already exists"}, 409)
+    parent = fp.parent.strip()
+    if parent and not db.q("SELECT slug FROM fundamentals WHERE slug=? AND polarity!='modifier'", (parent,), one=True):
+        return JSONResponse({"detail": "unknown parent fundamental"}, 400)
+    lo = max(minpos, fp.position - (0.2 if fp.polarity == "modifier" else 5))
+    hi = min(maxpos, fp.position + (0.2 if fp.polarity == "modifier" else 5))
     con = __import__("sqlite3").connect(db.DB)
-    con.execute("INSERT INTO fundamentals(slug,name,definition,polarity,position,range_lo,range_hi,status,created_by,created) VALUES(?,?,?,?,?,?,?,?,?,?)",
+    con.execute("INSERT INTO fundamentals(slug,name,definition,polarity,position,range_lo,range_hi,status,created_by,created,parent) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (slug, fp.name.strip(), fp.definition.strip(), fp.polarity, fp.position,
-                 max(0.0, float(fp.position)-5), min(100.0, float(fp.position)+5), "PROPOSED", user["id"], time.time()))
+                 lo, hi, "PROPOSED", user["id"], time.time(), parent))
     con.execute('INSERT INTO fund_votes(slug,user_id,position,"when",created) VALUES(?,?,?,?,?)',
                 (slug, user["id"], fp.position, fp.when, time.time()))
     con.commit(); con.close()
     return {"ok": True, "slug": slug}
+
+# ----- case threads: per-case dated timelines with actor POVs ---------------
+class EventIn(BaseModel):
+    case_id: str; ymd: str; actor: str; pov: str = "observed"; text: str; evidence_url: str
+
+@app.post("/api/event/add")
+def api_event_add(request: Request, ev: EventIn):
+    user, _ = ctx(request)
+    if not user: return JSONResponse({"detail": "login required"}, 401)
+    if not db.q("SELECT id FROM cases WHERE id=?", (ev.case_id,), one=True):
+        return JSONResponse({"detail": "unknown case"}, 400)
+    if not valid_when(ev.ymd): return JSONResponse({"detail": "date required (YYYY-MM-DD) — threads are dated, always"}, 400)
+    if not ev.evidence_url.startswith("http"): return JSONResponse({"detail": "evidence URL required"}, 400)
+    if ev.pov not in ("said", "did", "ruled", "alleged", "observed"):
+        return JSONResponse({"detail": "pov = said|did|ruled|alleged|observed"}, 400)
+    con = __import__("sqlite3").connect(db.DB)
+    con.execute("INSERT INTO case_events(case_id,ymd,actor,pov,text,evidence_url,added_by,created) VALUES(?,?,?,?,?,?,?,?)",
+                (ev.case_id, ev.ymd, ev.actor.strip()[:80], ev.pov, ev.text.strip()[:600],
+                 ev.evidence_url, user["id"], time.time()))
+    con.commit(); con.close()
+    return {"ok": True}
 
 class ParamAddIn(BaseModel):
     case_id: str; param: str; funds: str; evidence_url: str; when: str = ""
