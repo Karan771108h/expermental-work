@@ -103,8 +103,12 @@ def home(request: Request):
       <a href="/rules/set?profile=open"><b>open</b></a> reproduces the published
       <a href="https://github.com/Karan771108h/expermental-work/blob/main/REPORT.md">report totals</a> exactly
       (balanced hides seed rows backed only by wiki/tweet-grade evidence — that is the dial doing its job).</p>
-      <p><a class="btn" href="/cases">Browse cases</a> <a class="btn ghost" href="/rules">Set my trust dial</a>
-      <a class="btn ghost" href="/auth">Join to vote</a></p>
+      <p><a class="btn" href="/cases">Browse cases</a> <a class="btn ghost" href="/fundamentals">⚖ The fundamentals scale</a>
+      <a class="btn ghost" href="/rules">Set my trust dial</a> <a class="btn ghost" href="/auth">Join to vote</a></p>
+      <p class="muted">New here? The platform runs on three moves — <b>read → vote → challenge</b> — and one bedrock:
+      the <a href="/fundamentals">0–100 fundamentals scale</a>, where atomic building blocks (opacity ≈ 6,
+      proven institutional scam ≈ 50, constitutional siege ≈ 100) are layered into every parameter, so unlike acts
+      can never be scored equal. <a href="/tour">📖 Tutorial in 6 steps</a></p>
     </div>
     <h2>Composite scoreboards (under <i>your</i> trust dial)</h2>
     <div class="grid">{''.join(cards)}</div>
@@ -219,9 +223,13 @@ def case_detail(request: Request, cid: str):
         m, n = db.param_median(cid, p["param"], profile)
         ent = entity_name(p["entity_id"])
         votes = db.vote_count(cid, p["param"])
-        vote_link = f'<a href="#vote" onclick="document.getElementById(\'p\').value={R.esc(chr(39)+p["param"]+chr(39))};return false">vote</a>'
+        pfs = db.param_funds(cid, p["param"])
+        raw = db.compose_points(pfs) if pfs else None
+        fund_chips = "" if not pfs else ("<div class='fundchips'>⚖ composed of " +
+            " ".join(f'<a class="fund {"v" if f["polarity"]=="virtue" else "h"}">{R.esc(f["name"])}×{f["strength"]:g}</a>' for f in pfs)
+            + f' → <b>{raw:+.1f} pts</b> fundamental-scale</div>')
         rows_html.append(f"""<tr>
-          <td><b>{R.esc(p['param'])}</b><br><span class="muted">{R.esc(ent)} · {R.esc(p['role'])}</span></td>
+          <td><b>{R.esc(p['param'])}</b><br><span class="muted">{R.esc(ent)} · {R.esc(p['role'])}</span>{fund_chips}</td>
           <td>{R.chip(p['seed_score'])} <span class="muted">seed</span></td>
           <td>{R.chip(m)} <span class="muted">{n} evidence-passing source(s) · {votes} crowd vote(s)</span></td>
           <td>{R.esc(p['justification'])}<br>{R.grade_pill(db.best_grade(p['sources']))} {R.source_links(p['sources'])}</td></tr>""")
@@ -239,31 +247,49 @@ def case_detail(request: Request, cid: str):
       <h2>Parameters & evidence (each line independently challengeable)</h2>
       <table><thead><tr><th>Parameter / actor</th><th>Seed score</th><th>Live median</th><th>Basis · grade · sources</th></tr></thead>
       <tbody>{''.join(rows_html)}</tbody></table>
-      <h2>Cast your vote (one per parameter; include an evidence link or it doesn't count)</h2>
+      <h2>Cast your vote <span class="muted">(one per parameter; evidence link + event date or it doesn't count)</span></h2>
       <form class="card" id="voteform" onsubmit="event.preventDefault();">
         <label>Case</label><input name="case_id" value="{R.esc(cid)}" readonly>
         <label>Parameter (must match one above)</label>
         <input id="p" name="param" list="params" required>
         <datalist id="params">{''.join(f'<option value="{R.esc(p["param"])}">' for p in params)}</datalist>
-        <label>Your score (−5 … +5)</label><input name="score" type="number" min="-5" max="5" step="0.5" required>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+          <div><label>Your score (−5 … +5)</label><input name="score" type="number" min="-5" max="5" step="0.5" required></div>
+          <div><label>📅 Event date of the conduct you're scoring</label><input name="when" type="text" placeholder="YYYY-MM-DD" pattern="\\d{{4}}(-\\d{{2}}){{0,2}}" required></div>
+        </div>
         <label>Evidence URL (court/CAG/RBI/ECI links grade highest)</label><input name="evidence_url" type="url" required placeholder="https://…">
         <br><br><button class="btn">Submit vote</button><span id="msg" class="muted"></span>
       </form>
-      <h2>Challenge this case</h2>
+      <h2>Missing a parameter? Compose one from fundamentals</h2>
+      <form class="card" id="paramform" onsubmit="event.preventDefault();">
+        <label>Parameter name (short, neutral)</label><input name="param" required maxlength="120" placeholder="e.g. press freedom enforcement, not 'raid')" >
+        <input type="hidden" name="case_id" value="{R.esc(cid)}">
+        <label>Composition — fundamental slugs with strength (see <a href="/fundamentals" target="_blank">scale</a>)</label>
+        <input name="funds" required placeholder="e.g. power-misuse:0.8, corruption-alleged:0.5">
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+          <div><label>📅 Event date</label><input name="when" type="text" placeholder="YYYY-MM-DD" required></div>
+          <div><label>Evidence URL</label><input name="evidence_url" type="url" required placeholder="https://…"></div>
+        </div>
+        <br><button class="btn">Compute & add parameter</button><span id="pmsg" class="muted"></span>
+      </form>
+      <h2>Challenge this case <span class="muted">(even a 50-year-old verdict — re-open it with evidence)</span></h2>
       <form class="card" onsubmit="event.preventDefault();">
         <label>What is wrong? (datum, grading, weight, framing)</label><input name="note" required>
-        <label>Your counter-evidence URL (required)</label><input name="evidence_url" type="url" required placeholder="https://…">
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+          <div><label>Your counter-evidence URL (required)</label><input name="evidence_url" type="url" required placeholder="https://…"></div>
+          <div><label>📅 Date of the item you're challenging</label><input name="when" type="text" placeholder="YYYY-MM-DD" required></div>
+        </div>
         <br><br><button class="btn warn">Open challenge</button><span id="cmsg" class="muted"></span>
       </form>"""
     js = R.JS_UTILS + """
-      document.querySelectorAll('form.card').forEach((f,idx)=>{ f.onsubmit=async()=>{
-        const data=formVals(f); const url = idx===0 ? '/api/vote' : '/api/challenge';
-        if(idx===1){ data.kind='case'; data.object_id=data.case_id || document.querySelector('[name=case_id]').value; }
-        const r=await postJSON(url,data);
-        const el=f.querySelector(idx===0?'#msg':'#cmsg');
-        el.textContent = r.ok ? ' ✔ saved — refresh to see effect' : (' ✖ ' + (r.body.detail||'error'));
-        if(r.ok) setTimeout(()=>location.reload(), 900);
-      };});
+      const f0=document.getElementById('voteform'), f1=document.getElementById('paramform'), f2=document.querySelectorAll('form.card')[2];
+      f0.onsubmit=async()=>{const r=await postJSON('/api/vote',formVals(f0));
+        f0.querySelector('#msg').textContent=r.ok?' ✔ vote sealed — thank you':(' ✖ '+(r.body.detail||'error')); if(r.ok)setTimeout(()=>location.reload(),900);};
+      f1.onsubmit=async()=>{const r=await postJSON('/api/param/add',formVals(f1));
+        f1.querySelector('#pmsg').textContent=r.ok?(' ✔ added — fundamental-scale '+r.body.raw_points+' pts, normalised '+r.body.normalised):(' ✖ '+(r.body.detail||'error')); if(r.ok)setTimeout(()=>location.reload(),1100);};
+      f2.onsubmit=async()=>{const d=formVals(f2); d.kind='case'; d.object_id=d.case_id||document.querySelector('[name=case_id]').value;
+        const r=await postJSON('/api/challenge',d);
+        f2.querySelector('#cmsg').textContent=r.ok?' ⚔ challenge is open — flagged site-wide':(' ✖ '+(r.body.detail||'error')); if(r.ok)setTimeout(()=>location.reload(),900);};
     """
     return R.page(c["title"], body, user, profile, db.PROFILE_LABELS[profile], extra_js=js)
 
@@ -280,11 +306,39 @@ def timeline(request: Request, frm: str = "1947", to: str = "2026"):
         rows.append(f"""<tr><td><b>{R.esc(t['year'])}</b> <span class="muted">{R.esc(t['date'])}</span></td>
           <td>{R.esc(t['event'])}<br><span class="muted">{R.esc(t['actor'])} · {R.esc(t['category'])}</span></td>
           <td>{R.source_links(t['proof'])}</td></tr>""")
+    acts = []
+    for v in db.q("""SELECT v."when" w, v.score, v.case_id, v.param, u.username FROM votes v
+                     LEFT JOIN users u ON u.id=v.user_id WHERE v."when"!='' ORDER BY v.created DESC"""):
+        acts.append((v["w"], f'<b>vote</b> by {R.esc(v["username"] or "?")}: <a href="/case/{R.esc(v["case_id"])}">{R.esc(v["case_id"])}</a>'
+                     f' · {R.esc(v["param"])} {R.chip(v["score"])}', ""))
+    for ch in db.q("""SELECT c."when" w, c.kind, c.object_id, c.note, u.username FROM challenges c
+                     LEFT JOIN users u ON u.id=c.user_id WHERE c."when"!='' ORDER BY c.created DESC"""):
+        acts.append((ch["w"], f'<b>challenge</b> by {R.esc(ch["username"] or "?")} on '
+                     f'<a href="/case/{R.esc(ch["object_id"])}">{R.esc(ch["object_id"])}</a>: {R.esc(ch["note"])}', ""))
+    for fd in db.q("""SELECT slug, name, position, created FROM fundamentals WHERE status='PROPOSED'"""):
+        d = time.strftime("%Y-%m-%d", time.localtime(fd["created"])) if fd["created"] else ""
+        acts.append((d, f'<b>new fundamental proposed</b>: <a href="/fundamentals#{R.esc(fd["slug"])}">{R.esc(fd["name"])}</a>'
+                     f' (proposed position {fd["position"]:g})', ""))
+    acts.sort(key=lambda a: a[0], reverse=True)
+    act_html = "".join(f'<tr><td class="muted">{R.esc(w)}</td><td>{txt}</td></tr>' for w, txt, _ in acts)
     body = f"""<h1>Master timeline of Indian governance (proof-linked)</h1>
     <form class="inline filters" method="get"><label>From <input name="frm" value="{R.esc(frm)}" style="width:90px"></label>
     <label>To <input name="to" value="{R.esc(to)}" style="width:90px"></label><button class="btn">Go</button></form>
-    <table><thead><tr><th>When</th><th>What</th><th>Proof</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"""
+    <table><thead><tr><th>When</th><th>What</th><th>Proof</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
+    <h2>Community activity layer <span class="muted">(every vote/challenge/fundamental carries its event date)</span></h2>
+    {'<table><tbody>'+act_html+'</tbody></table>' if acts else '<p class="muted">No activity yet — cast the first dated vote on any case.</p>'}"""
     return R.page("Timeline", body, user, profile, db.PROFILE_LABELS[profile])
+
+@app.get("/tour", response_class=HTMLResponse)
+def tour(request: Request):
+    user, profile = ctx(request)
+    steps = "".join(f'<div class="card"><h2>{i+1} · {R.esc(t)}</h2><p>{b}</p></div>'
+                    for i, (t, b) in enumerate(R.TOUR_STEPS))
+    body = f"""<h1>📖 The 6-step RajScore walkthrough</h1>
+    <p class="muted">This is the same tour that pops up for first-time visitors. Two minutes, and you can operate the whole platform.</p>
+    {steps}
+    <p><a class="btn" href="/?tour=1">Back to home</a></p>"""
+    return R.page("Tutorial", body, user, profile, db.PROFILE_LABELS[profile])
 
 @app.get("/claims", response_class=HTMLResponse)
 def claims(request: Request):
@@ -436,8 +490,11 @@ def api_timeline(): return db.q("SELECT * FROM timeline")
 @app.get("/api/claims")
 def api_claims(): return db.q("SELECT * FROM claims")
 
+DATE_RE = re.compile(r"^\d{4}(-\d{2})?(-\d{2})?$")
+def valid_when(w): return bool(w) and bool(DATE_RE.match(w.strip()))
+
 class VoteIn(BaseModel):
-    case_id: str; param: str; score: float; evidence_url: str
+    case_id: str; param: str; score: float; evidence_url: str; when: str = ""
 
 @app.post("/api/vote")
 def api_vote(request: Request, v: VoteIn):
@@ -445,14 +502,15 @@ def api_vote(request: Request, v: VoteIn):
     if not user: return JSONResponse({"detail": "login required"}, 401)
     if not (-5 <= v.score <= 5): return JSONResponse({"detail": "score must be −5..+5"}, 400)
     if not v.evidence_url.startswith("http"): return JSONResponse({"detail": "evidence URL required"}, 400)
+    if not valid_when(v.when): return JSONResponse({"detail": "event date required (YYYY-MM-DD). Everything on RajScore is timestamped — that is how the timeline stays honest."}, 400)
     ok = db.q("SELECT entity_id FROM case_params WHERE case_id=? AND param=?", (v.case_id, v.param), one=True)
     if not ok: return JSONResponse({"detail": "unknown parameter for this case"}, 400)
     con = __import__("sqlite3").connect(db.DB)
-    con.execute("""INSERT INTO votes(user_id,case_id,entity_id,param,score,evidence_url,created)
-                   VALUES(?,?,?,?,?,?,?)
+    con.execute("""INSERT INTO votes(user_id,case_id,entity_id,param,score,evidence_url,"when",created)
+                   VALUES(?,?,?,?,?,?,?,?)
                    ON CONFLICT(user_id,case_id,param) DO UPDATE SET score=excluded.score,
-                   evidence_url=excluded.evidence_url, created=excluded.created""",
-                (user["id"], v.case_id, ok["entity_id"], v.param, v.score, v.evidence_url, time.time()))
+                   evidence_url=excluded.evidence_url, "when"=excluded."when", created=excluded.created""",
+                (user["id"], v.case_id, ok["entity_id"], v.param, v.score, v.evidence_url, v.when, time.time()))
     # refresh case status
     newstatus = db.case_status(v.case_id)
     con.execute("UPDATE cases SET status=? WHERE id=? AND status!='CHALLENGED'", (newstatus, v.case_id))
@@ -460,7 +518,7 @@ def api_vote(request: Request, v: VoteIn):
     return {"ok": True}
 
 class ChallengeIn(BaseModel):
-    kind: str = "case"; object_id: str = ""; note: str; evidence_url: str; case_id: str = ""
+    kind: str = "case"; object_id: str = ""; note: str; evidence_url: str; case_id: str = ""; when: str = ""
 
 @app.post("/api/challenge")
 def api_challenge(request: Request, ch: ChallengeIn):
@@ -469,13 +527,168 @@ def api_challenge(request: Request, ch: ChallengeIn):
     obj = ch.object_id or ch.case_id
     if not obj or not ch.evidence_url.startswith("http"):
         return JSONResponse({"detail": "object id and evidence URL required"}, 400)
+    if not valid_when(ch.when):
+        return JSONResponse({"detail": "date of the item you are challenging is required (YYYY-MM-DD)"}, 400)
+    if not re.match(r"^\d{4}(-\d{2})?(-\d{2})?$", ch.when.strip()):
+        return JSONResponse({"detail": "bad date format — use YYYY-MM-DD"}, 400)
     con = __import__("sqlite3").connect(db.DB)
-    con.execute("INSERT INTO challenges(kind,object_id,note,evidence_url,user_id,created) VALUES(?,?,?,?,?,?)",
-                (ch.kind, obj, ch.note, ch.evidence_url, user["id"], time.time()))
+    con.execute('INSERT INTO challenges(kind,object_id,note,evidence_url,"when",user_id,created) VALUES(?,?,?,?,?,?,?)',
+                (ch.kind, obj, ch.note, ch.evidence_url, ch.when, user["id"], time.time()))
     if ch.kind == "case":
         con.execute("UPDATE cases SET status='CHALLENGED' WHERE id=?", (obj,))
     con.commit(); con.close()
     return {"ok": True}
+
+# ----- fundamentals layer ---------------------------------------------------
+@app.get("/fundamentals", response_class=HTMLResponse)
+def fundamentals(request: Request):
+    user, profile = ctx(request)
+    funds = db.fund_rows()
+    spec = R.spectrum_svg(funds)
+    def band(pol):
+        out = []
+        for f in [x for x in funds if x["polarity"] == pol]:
+            m, c = db.fund_vote_stats(f["slug"])
+            crowd = f'<span class="muted">crowd mean {m:.1f} from {c} placement(s)</span>' if c else '<span class="muted">anchor position (seeded)</span>'
+            out.append(f"""<tr id="{f['slug']}">
+              <td><b>{R.esc(f['name'])}</b><br><span class="muted">{R.esc(f['definition'])}</span></td>
+              <td class="num"><b>{f['position']:g}</b><br><span class="muted">range {f['range_lo']:g}–{f['range_hi']:g}</span></td>
+              <td>{R.badge(f['status'])}<br>{crowd}</td>
+              <td><form class="inline placeform" data-slug="{R.esc(f['slug'])}">
+                <input name="position" type="number" min="0" max="100" step="0.5" placeholder="0–100" style="width:86px" required>
+                <input name="when" type="text" placeholder="YYYY-MM-DD" style="width:120px" required>
+                <button class="btn ghost">place</button><span class="fm muted"></span></form></td>
+            </tr>""")
+        return "".join(out)
+    body = f"""<h1>The fundamentals scale</h1>
+    <p>This platform's bedrock: <b>atomic, irreplaceable building blocks</b> — things like
+    <i>opacity</i>, <i>proven corruption</i>, <i>loss of lives</i>, <i>institution-building</i> — each with a
+    position on a 0–100 severity scale. <b>Parameters are compositions of fundamentals</b>, so unlike acts can
+    never be scored equal by careless labels: a press-shy leader (opacity ≈ 6) and a proven institutional scam
+    (≈ 50) land in different universes by construction.</p>
+    {spec}
+    <div class="card"><b>How placement works.</b> New fundamentals are proposed below with a definition and a
+    suggested position roughly relative to its neighbours ("worse than promise-breaking, milder than power misuse").
+    Members then <b>place</b> it on the scale (with a date — everything here is timestamped). At ≥5 placements the
+    consensus position locks to the crowd mean, and stays re-challengeable forever. Weights are relative: the
+    whole scale can be rescaled by any positive constant without changing any ranking — what matters is
+    <i>where something sits beside everything else</i>.</div>
+    <h2 id="harm-band">Harm fundamentals (score −)</h2>
+    <table><thead><tr><th>Fundamental</th><th class="num">Position (0–100)</th><th>Status</th><th>Cast your placement</th></tr></thead>
+    <tbody>{band('harm')}</tbody></table>
+    <h2 id="virtue-band">Virtue fundamentals (score +)</h2>
+    <table><thead><tr><th>Fundamental</th><th class="num">Position (0–100)</th><th>Status</th><th>Cast your placement</th></tr></thead>
+    <tbody>{band('virtue')}</tbody></table>
+    <div class="card"><h2>Propose a new fundamental <span class="badge warn">irreplaceable once in ledger</span></h2>
+    <p class="muted">Ask first: is it <b>atomic</b> (can't be explained as two existing fundamentals combined)?
+    Does it deserve its own slot on the scale for decades? Examples rejected: 'Gujarat 2002' (not atomic — an event,
+    not a fundamental). Example accepted: 'state capacity failure in crisis'.</p>
+    <form class="grid" id="propform" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+      <div><label>Name (short)</label><input name="name" required maxlength="60"></div>
+      <div><label>Definition (one sentence, objective)</label><input name="definition" required></div>
+      <div><label>Polarity</label><select name="polarity"><option>harm</option><option>virtue</option></select></div>
+      <div><label>Your proposed position (0–100)</label><input name="position" type="number" min="0" max="100" step="0.5" required></div>
+      <div><label>Date</label><input name="when" type="text" placeholder="YYYY-MM-DD" required></div>
+      <div><label>&nbsp;</label><button class="btn">Propose</button><span class="pm muted"></span></div>
+    </form></div>"""
+    js = R.JS_UTILS + """
+    document.querySelectorAll('form.placeform').forEach(f=>{f.addEventListener('submit',async e=>{e.preventDefault();
+      const d=formVals(f); d.slug=f.dataset.slug;
+      const r=await postJSON('/api/fundamental/place',d);
+      f.querySelector('.fm').textContent = r.ok?' ✔ placed':(' ✖ '+(r.body.detail||'error'));
+      if(r.ok) setTimeout(()=>location.reload(),900);});});
+    const pf=document.getElementById('propform'); if(pf) pf.onsubmit=async e=>{e.preventDefault();
+      const r=await postJSON('/api/fundamental/propose',formVals(pf));
+      pf.querySelector('.pm').textContent = r.ok?' ✔ proposed — visible in the ledger':(' ✖ '+(r.body.detail||'error'));
+      if(r.ok) setTimeout(()=>location.reload(),900);};
+    """
+    return R.page("Fundamentals", body, user, profile, db.PROFILE_LABELS[profile], extra_js=js)
+
+class FundPlaceIn(BaseModel):
+    slug: str; position: float; when: str = ""
+
+@app.post("/api/fundamental/place")
+def api_fund_place(request: Request, fp: FundPlaceIn):
+    user, _ = ctx(request)
+    if not user: return JSONResponse({"detail": "login required"}, 401)
+    if not (0 <= fp.position <= 100): return JSONResponse({"detail": "position must be 0–100"}, 400)
+    if not valid_when(fp.when): return JSONResponse({"detail": "date required (YYYY-MM-DD)"}, 400)
+    if not db.q("SELECT slug FROM fundamentals WHERE slug=?", (fp.slug,), one=True):
+        return JSONResponse({"detail": "unknown fundamental"}, 400)
+    con = __import__("sqlite3").connect(db.DB)
+    con.execute('INSERT INTO fund_votes(slug,user_id,position,"when",created) VALUES(?,?,?,?,?) '
+                'ON CONFLICT(slug,user_id) DO UPDATE SET position=excluded.position, "when"=excluded."when", created=excluded.created',
+                (fp.slug, user["id"], fp.position, fp.when, time.time()))
+    con.commit(); con.close()
+    db.fund_consensus_refresh(fp.slug)
+    return {"ok": True}
+
+class FundPropIn(BaseModel):
+    name: str; definition: str; polarity: str = "harm"; position: float; when: str = ""
+
+@app.post("/api/fundamental/propose")
+def api_fund_propose(request: Request, fp: FundPropIn):
+    user, _ = ctx(request)
+    if not user: return JSONResponse({"detail": "login required"}, 401)
+    if not valid_when(fp.when): return JSONResponse({"detail": "date required (YYYY-MM-DD)"}, 400)
+    if fp.polarity not in ("harm", "virtue"): return JSONResponse({"detail": "polarity = harm|virtue"}, 400)
+    slug = re.sub(r"[^a-z0-9]+", "-", fp.name.strip().lower()).strip("-")[:40]
+    if not slug: return JSONResponse({"detail": "bad name"}, 400)
+    if db.q("SELECT slug FROM fundamentals WHERE slug=?", (slug,), one=True):
+        return JSONResponse({"detail": "a fundamental with this name already exists"}, 409)
+    con = __import__("sqlite3").connect(db.DB)
+    con.execute("INSERT INTO fundamentals(slug,name,definition,polarity,position,range_lo,range_hi,status,created_by,created) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (slug, fp.name.strip(), fp.definition.strip(), fp.polarity, fp.position,
+                 max(0.0, float(fp.position)-5), min(100.0, float(fp.position)+5), "PROPOSED", user["id"], time.time()))
+    con.execute('INSERT INTO fund_votes(slug,user_id,position,"when",created) VALUES(?,?,?,?,?)',
+                (slug, user["id"], fp.position, fp.when, time.time()))
+    con.commit(); con.close()
+    return {"ok": True, "slug": slug}
+
+class ParamAddIn(BaseModel):
+    case_id: str; param: str; funds: str; evidence_url: str; when: str = ""
+
+@app.post("/api/param/add")
+def api_param_add(request: Request, pa: ParamAddIn):
+    """Add a parameter to a case as a composition of fundamentals."""
+    user, _ = ctx(request)
+    if not user: return JSONResponse({"detail": "login required"}, 401)
+    if not db.q("SELECT id FROM cases WHERE id=?", (pa.case_id,), one=True):
+        return JSONResponse({"detail": "unknown case"}, 400)
+    if not pa.evidence_url.startswith("http"): return JSONResponse({"detail": "evidence URL required"}, 400)
+    if not valid_when(pa.when): return JSONResponse({"detail": "event date required (YYYY-MM-DD)"}, 400)
+    combo = []
+    for part in pa.funds.split(","):
+        part = part.strip()
+        if not part: continue
+        m = re.match(r"^([a-z0-9-]+)(?::([0-9.]+))?$", part)
+        if not m: return JSONResponse({"detail": f"bad fund token '{part}' — use slug or slug:strength"}, 400)
+        slug, strength = m.group(1), float(m.group(2) or 1)
+        f = db.q("SELECT * FROM fundamentals WHERE slug=?", (slug,), one=True)
+        if not f: return JSONResponse({"detail": f"unknown fundamental '{slug}'"}, 400)
+        if not (0.1 <= strength <= 1.0): return JSONResponse({"detail": "strength 0.1–1.0"}, 400)
+        combo.append({"slug": slug, "strength": strength, **{k: f[k] for k in f.keys()}})
+    if not combo: return JSONResponse({"detail": "choose at least one fundamental"}, 400)
+    raw = db.compose_points(combo)
+    norm = db.composed_to_five(raw)
+    ent = db.q("SELECT DISTINCT entity_id FROM case_params WHERE case_id=? LIMIT 1", (pa.case_id,), one=True)
+    combo_txt = ", ".join("{}x{}".format(c["name"], c["strength"]) for c in combo)
+    just_txt = "community-composed: {} (fundamental-scale {:+.1f} pts)".format(combo_txt, raw)
+    con = __import__("sqlite3").connect(db.DB)
+    try:
+        con.execute("""INSERT INTO case_params(case_id,entity_id,role,param,seed_score,justification,sources,creator,created)
+                       VALUES(?,?,?,?,?,?,?,?,?)""",
+                    (pa.case_id, ent["entity_id"] if ent else "party:bjp", "crowd", pa.param.strip()[:120],
+                     norm, just_txt, pa.evidence_url, user["id"], time.time()))
+        for c in combo:
+            con.execute("INSERT OR IGNORE INTO param_funds(case_id,param,slug,strength) VALUES(?,?,?,?)",
+                        (pa.case_id, pa.param.strip()[:120], c["slug"], c["strength"]))
+        con.execute("UPDATE cases SET status='COMMUNITY REVIEW' WHERE id=? AND status='SEEDED'", (pa.case_id,))
+        con.commit()
+    except Exception as e:
+        con.close(); return JSONResponse({"detail": f"could not add: {e}"}, 500)
+    con.close()
+    return {"ok": True, "raw_points": raw, "normalised": norm}
 
 class AuthIn(BaseModel):
     username: str; password: str; leaning: str = "none"

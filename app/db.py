@@ -141,7 +141,7 @@ def init_and_seed():
     con = sqlite3.connect(DB)
     con.executescript(SCHEMA)
     if con.execute("SELECT count(*) c FROM case_params").fetchone()[0] > 0:
-        con.close(); return
+        con.close(); seed_fundamentals(); return
     con.executemany("INSERT INTO entities VALUES(?,?,?,?,?)", ENTITIES)
     con.executemany(
         "INSERT INTO claims(text,verdict,actor_id,detail,evidence) VALUES(?,?,?,?,?)",
@@ -167,6 +167,7 @@ def init_and_seed():
                 "INSERT INTO timeline(year,date,era,actor,event,category,proof) VALUES(?,?,?,?,?,?,?)",
                 (r["year"], r["date"], r["era"], r["actor_in_office"], r["event"], r["category"], r["proof"]))
     con.commit(); con.close()
+    seed_fundamentals()
 
 def hash_pw(pw: str) -> str:
     return hashlib.pbkdf2_hmac("sha256", pw.encode(), b"rajscore-v2", 60000).hex()
@@ -247,3 +248,112 @@ def case_status(case_id):
         if same / n >= 0.66: return "CONSENSUS"
         return "CONTESTED"
     return "COMMUNITY REVIEW"
+
+# ---------------------------------------------------------------------------
+# FUNDAMENTALS LAYER (P2): atomic, irreplaceable building blocks on a 0-100
+# severity/virtue scale. Parameters are COMPOSITIONS of fundamentals, so unlike
+# things can never be scored equal just by flat labels.
+# Positions are crowd-placed relative to anchors (placement votes -> mean).
+# ---------------------------------------------------------------------------
+
+# polarity: 'harm' (negative) or 'virtue' (positive). position on 0..100.
+FUND_SEEDS = [
+    ("rhetoric-slip",        "Rhetorical / factual slip",            "A statement that is wrong or exaggerated, no lasting damage", "harm", 3,  1, 5),
+    ("opacity",              "Opacity / avoiding scrutiny",          "Not facing press, withholding data, evading accountability",  "harm", 6,  4, 10),
+    ("promise-break",        "Broken major promise",                 "A campaign promise abandoned or delivered only as rhetoric",  "harm", 12, 8, 18),
+    ("norm-erosion",         "Democratic norm erosion",              "Voice votes, skipping debate/committee, ignoring house rules","harm", 15, 10, 22),
+    ("corruption-alleged",   "Corruption alleged, uninvestigated",   "Credible allegation kept away from independent probe",        "harm", 22, 12, 32),
+    ("othering-speech",      "Communal / othering speech",           "Speech that divides citizens on identity lines",              "harm", 25, 15, 35),
+    ("corruption-proven",    "Corruption proven (individual)",       "Court or audited proof of personal/party graft",              "harm", 35, 25, 50),
+    ("corrupt-institutional","Institutional-scale scam (proven)",    "Systemic loot established by court/CAG/inquiry",              "harm", 50, 40, 65),
+    ("power-misuse",         "State power misused vs opponents",     "Agencies/ordinances weaponised for politics",                 "harm", 55, 40, 70),
+    ("institution-capture",  "Capture of an independent institution","Independence of ECI/CBI/courts/media structurally compromised","harm",60, 45, 75),
+    ("life-single",          "Civilian life lost, small scale, policy-linked", "Deaths directly traceable to a decision/neglect, few in number","harm",62,50,75),
+    ("life-hundreds",        "Deaths in the hundreds (policy-linked)","Mass casualties linked to a decision or dereliction",        "harm", 75, 60, 88),
+    ("anti-national",        "Act against national integrity/security","Proven act materially harming the nation's security/unity", "harm", 88, 70, 100),
+    ("life-thousands",       "Mass life loss (thousands+) under watch","Catastrophic, policy-linked loss of life",                  "harm", 92, 80, 100),
+    ("constit-siege",        "Assault on the Constitution itself",   "Suspension/hollowing of constitutional order (Emergency-grade)","harm",100,90,100),
+    ("admin-minor",          "Competent administration, small win",  "Routine duty done visibly well",                              "virtue", 5,  2, 8),
+    ("service-reach",        "Delivery at scale (10M+ households)",  "Welfare/infrastructure reaching tens of millions on record",  "virtue", 30, 18, 45),
+    ("unity-act",            "Uniting act in national crisis",       "Crossing party lines for the nation when it mattered",        "virtue", 35, 20, 50),
+    ("crisis-lead",          "Steady leadership through crisis",     "Visible, calm, effective helmsmanship",                       "virtue", 40, 25, 60),
+    ("infra-strategic",      "Strategic infrastructure delivered",   "Long-horizon national asset built to acceptable standard",    "virtue", 45, 30, 60),
+    ("reform-structural",    "Structural reform, measured outcome",  "Reform whose effects are independently measurable",           "virtue", 55, 40, 70),
+    ("life-saved-scale",     "Policy saving lives at lakh scale",    "Health/safety interventions with audited mortality gains",    "virtue", 80, 60, 95),
+    ("institution-build",    "Institution with decades-long payoff", "Creating capacity that outlives the builder (IITs/ISRO-grade)","virtue",85, 70, 100),
+]
+
+_FUND_SCHEMA = """
+CREATE TABLE IF NOT EXISTS fundamentals(
+  slug TEXT PRIMARY KEY, name TEXT, definition TEXT, polarity TEXT,
+  position REAL, range_lo REAL, range_hi REAL,
+  status TEXT DEFAULT 'CONSENSUS', created_by INTEGER, created REAL);
+CREATE TABLE IF NOT EXISTS fund_votes(
+  id INTEGER PRIMARY KEY, slug TEXT, user_id INTEGER, position REAL,
+  between_a TEXT, between_b TEXT, "when" TEXT, created REAL,
+  UNIQUE(slug, user_id));
+CREATE TABLE IF NOT EXISTS param_funds(
+  case_id TEXT, param TEXT, slug TEXT, strength REAL,
+  UNIQUE(case_id, param, slug));
+"""
+
+# illustrative compositions for seeded params (case_id, param, slug, strength)
+PARAM_FUND_SEEDS = [
+    ("C05", "rule of law suspension", "constit-siege", 1.0),
+    ("C05", "rule of law suspension", "institution-capture", 0.8),
+    ("B19", "execution shock", "life-hundreds", 0.6),
+    ("B19", "execution shock", "corruption-alleged", 0.5),
+    ("M10", "communication opacity", "opacity", 1.0),
+]
+
+def _migrate(con):
+    """Idempotent additive migrations: 'when' (event date) columns everywhere."""
+    for sql in ('ALTER TABLE votes ADD COLUMN "when" TEXT DEFAULT ""',
+                'ALTER TABLE challenges ADD COLUMN "when" TEXT DEFAULT ""',
+                'ALTER TABLE case_params ADD COLUMN creator INTEGER',
+                'ALTER TABLE case_params ADD COLUMN created REAL'):
+        try: con.execute(sql)
+        except sqlite3.OperationalError: pass
+
+def seed_fundamentals():
+    con = sqlite3.connect(DB)
+    con.executescript(_FUND_SCHEMA)
+    _migrate(con)
+    if con.execute("SELECT COUNT(*) FROM fundamentals").fetchone()[0] == 0:
+        con.executemany(
+            "INSERT INTO fundamentals(slug,name,definition,polarity,position,range_lo,range_hi,status,created) VALUES(?,?,?,?,?,?,?,'CONSENSUS',0)",
+            [tuple(r) for r in FUND_SEEDS])
+    con.executemany(
+        "INSERT OR IGNORE INTO param_funds(case_id,param,slug,strength) VALUES(?,?,?,?)", PARAM_FUND_SEEDS)
+    con.commit(); con.close()
+
+def fund_rows(): return q("SELECT * FROM fundamentals ORDER BY position")
+
+def fund_vote_stats(slug):
+    r = q("SELECT AVG(position) m, COUNT(*) c FROM fund_votes WHERE slug=?", (slug,), one=True)
+    return (r["m"], r["c"])
+
+def fund_consensus_refresh(slug):
+    m, c = fund_vote_stats(slug)
+    if c and c >= 5:
+        con = sqlite3.connect(DB)
+        con.execute("UPDATE fundamentals SET position=?, status='CONSENSUS' WHERE slug=?",
+                    (round(m, 1), slug))
+        con.commit(); con.close()
+
+def param_funds(case_id, param):
+    return q("SELECT pf.slug, pf.strength, f.name, f.polarity, f.position, f.range_lo, f.range_hi "
+             "FROM param_funds pf JOIN fundamentals f ON f.slug=pf.slug "
+             "WHERE pf.case_id=? AND pf.param=?", (case_id, param))
+
+def compose_points(funds):
+    """Fundamental-scale raw points of a composition: sum(position*strength), signed."""
+    total = 0.0
+    for f in funds:
+        sign = -1 if f["polarity"] == "harm" else 1
+        total += sign * (f["position"] or 0) * f["strength"]
+    return round(total, 1)
+
+def composed_to_five(raw):
+    """Map fundamental-scale points into the legacy -5..+5 pool (crowd-added params)."""
+    return round(max(-5, min(5, raw / 20.0)), 2)

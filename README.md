@@ -18,6 +18,14 @@ python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 Status machine: SEEDED → COMMUNITY REVIEW → **CONSENSUS** (≥5 votes, ≥⅔ sign agreement); any item re-openable forever via CHALLENGED + counter-evidence link (`cases.status` flips live).
 
+### P2 layer — fundamentals (added after user review)
+
+- **`/fundamentals`** — the bedrock idea: **atomic, irreplaceable building blocks** (*opacity ≈ 6, proving institutional scam ≈ 50, constitutional siege ≈ 100…*) plotted on a **0–100 severity spectrum**. Parameters are now **compositions of fundamentals** (e.g. a press-shy PM and a proven scam can never be equal by construction).
+- **Crowd placement**: propose a new fundamental (name + one-line objective definition + polarity + suggested position + date); members submit placements, ≥5 placements lock the consensus position to the crowd mean. Everything re-challengeable forever.
+- **Compose-a-parameter** on every case page: pick fundamentals + strengths → server computes fundamental-scale points → normalises to the −5..+5 pool. Compositions render as chips on the case.
+- **Dates are mandatory everywhere** (votes, challenges, fundamental placements/proposals) → `/timeline` now has a **community activity layer** alongside the proof-linked master timeline.
+- **First-run tutorial**: modal walkthrough on first visit + `/tour` page; replayable from the footer.
+
 --- (Congress vs BJP, Modi vs Rahul) — 1947 → 1 Sep 2026
 
 | File | What it is |

@@ -57,3 +57,25 @@ form.inline input,form.inline select{width:auto;max-width:none}
 footer{max-width:1080px;margin:2rem auto;padding:1rem;color:#64748b;font-size:.8rem;border-top:1px solid var(--line)}
 .etype{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b}
 .kbd{background:#f1f5f9;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:0 .3rem;font-size:.8em}
+
+/* ---- P2 additions: tour, spectrum, fundamentals, polish ---- */
+.tour{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:60;display:flex;align-items:center;justify-content:center;padding:1rem}
+.tour.hidden{display:none}
+.tour-card{background:#fff;border-radius:16px;max-width:460px;padding:1.3rem 1.5rem;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:pop .18s ease-out}
+@keyframes pop{from{transform:scale(.94);opacity:0}to{transform:scale(1);opacity:1}}
+.tour-card h3{margin:.3rem 0 .3rem}
+.tour-card p{color:#334155;font-size:.95rem}
+.tour-actions{display:flex;justify-content:space-between;margin-top:.8rem}
+.tour-dots{display:flex;gap:.35rem;margin-bottom:.4rem}
+.dot{width:9px;height:9px;border-radius:50%;background:#cbd5e1}
+.dot.on{background:var(--navy)}
+.spectrum{background:#fff;border:1px solid var(--line);border-radius:14px;padding:.6rem .8rem;margin:.8rem 0;overflow-x:auto}
+.fundchips{margin-top:.35rem;font-size:.8rem}
+.fund{display:inline-block;border-radius:6px;padding:0 .4rem;margin:0 .2rem .15rem 0;font-size:.72rem;border:1px solid}
+.fund.h{background:#fff1f2;border-color:#fecdd3;color:#9f1239}
+.fund.v{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
+input[required]:invalid{border-color:#fca5a5}
+thead th{position:sticky;top:58px;z-index:2}
+.hero h1{background:linear-gradient(90deg,var(--navy),var(--saffron));-webkit-background-clip:text;background-clip:text;color:transparent}
+.card:hover{box-shadow:0 4px 14px rgba(15,23,42,.07);transition:box-shadow .15s}
+@media (max-width:720px){main{padding:0 .6rem}.brand small{display:none}}
