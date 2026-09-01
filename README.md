@@ -1,4 +1,24 @@
-# Ideal-Party Accountability Audit (Congress vs BJP, Modi vs Rahul) — 1947 → 1 Sep 2026
+# Ideal-Party Accountability Audit
+
+## RajScore app (P1 build — running code)
+
+Server-rendered FastAPI + SQLite in [`app/`](app/); the seed corpus (`data/scores.csv`, `data/timeline.csv`) is loaded on first boot.
+
+```bash
+pip install fastapi "uvicorn[standard]"
+python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+- `/` scoreboards under your personal **trust dial** (cookie `rs_trust`: `official|balanced|open` — `open` reproduces REPORT.md totals exactly; `balanced` hides wiki/tweet-grade seed rows by design)
+- `/entities` + `/entity/<id>` — aliases, composites, sparkline, open challenges
+- `/cases` + `/case/<id>` — per-parameter seed vs live median, A/B/C evidence grades, source links, **vote** and **challenge** forms (login-gated)
+- `/auth` — signup with public **leaning badge** (pbkdf2-hashed passwords, session cookies)
+- `/report/<id>?frm=2014&to=2026` — instant report cards · `/timeline` (proof-linked, filterable) · `/claims` (fact-check lang)
+- JSON API (`/api/entities`, `/api/case/<id>`, `/api/totals?trust=…`, `/api/vote`, `/api/challenge`) — the Next.js front end per APP_SPEC.md P-phase consumes this layer unchanged.
+
+Status machine: SEEDED → COMMUNITY REVIEW → **CONSENSUS** (≥5 votes, ≥⅔ sign agreement); any item re-openable forever via CHALLENGED + counter-evidence link (`cases.status` flips live).
+
+--- (Congress vs BJP, Modi vs Rahul) — 1947 → 1 Sep 2026
 
 | File | What it is |
 |---|---|
